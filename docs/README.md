@@ -6,6 +6,7 @@ Hướng dẫn chi tiết cho pipeline Hán-Việt Đại Nam Thực Lục.
 
 | Doc | Nội dung |
 |-----|----------|
+| [00_problem.md](00_problem.md) | **Đọc đầu tiên** — bài toán, pipeline lý do, chiến lược đánh giá không-gold |
 | [01_setup.md](01_setup.md) | Cài đặt môi trường: uv, Ollama docker, system deps, verification |
 | [02_data.md](02_data.md) | Spec input data, định dạng output, schema JSONL |
 | [03_pipeline.md](03_pipeline.md) | Chi tiết từng stage: code flow, params, outputs |
@@ -16,10 +17,11 @@ Hướng dẫn chi tiết cho pipeline Hán-Việt Đại Nam Thực Lục.
 ## Đọc theo thứ tự
 
 **Lần đầu chạy project:**
-1. `01_setup.md` → cài môi trường
-2. `02_data.md` → xác nhận input data đúng format
-3. `03_pipeline.md` → hiểu pipeline
-4. Chạy: `./scripts/run_pipeline.sh prep` rồi inspect output trước khi next stage
+1. `00_problem.md` → hiểu bài toán + chiến lược đánh giá
+2. `01_setup.md` → cài môi trường
+3. `02_data.md` → xác nhận input data đúng format
+4. `03_pipeline.md` → hiểu pipeline
+5. Chạy: `./scripts/run_pipeline.sh prep` rồi inspect output trước khi next stage
 
 **Khi gặp lỗi:**
 - `05_troubleshooting.md` trước

@@ -193,6 +193,7 @@ NLP/
 
 ## Tài liệu chi tiết
 
+- [`docs/00_problem.md`](docs/00_problem.md) — **đọc đầu tiên** — bài toán, pipeline lý do, chiến lược đánh giá
 - [`docs/01_setup.md`](docs/01_setup.md) — Cài đặt chi tiết + troubleshooting env
 - [`docs/02_data.md`](docs/02_data.md) — Spec input data + định dạng output
 - [`docs/03_pipeline.md`](docs/03_pipeline.md) — Giải thích từng stage + code flow
