@@ -1,6 +1,6 @@
 """Stage 3a: Han sentence split (Classical Chinese).
 
-HanLP sentence_split + custom rules for terminal punctuation and annotation brackets.
+Regex split on terminal punctuation + custom rules for annotation brackets.
 Output: data/interim/han_sentences.jsonl with {"idx", "text"}.
 """
 from __future__ import annotations

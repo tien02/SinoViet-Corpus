@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # HVB pipeline runner with checkpointing.
 # Usage: ./scripts/run_pipeline.sh [stage_name]
-#   stage_name in: prep, ocr, split, embed, align, ner, eval, all (default: all)
+#   stage_name in: prep, ocr, split, embed, align, export, all (default: all)
+#   'all' runs the full pipeline through export (the course deliverable).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -85,18 +86,8 @@ case "$STAGE" in
     align)
         run vecalign "uv run python -m src.05_align.vecalign_runner"
         ;;
-    ner)
-        run ner_han "uv run python -m src.06_ner.ner_han"
-        run ner_vi "uv run python -m src.06_ner.ner_vi"
-        run ner_bridge "uv run python -m src.06_ner.ner_bridge"
-        ;;
-    eval)
-        run auto_metrics "uv run python -m src.07_eval.auto_metrics"
-        run flores_sanity "uv run python -m src.07_eval.flores_sanity"
-        run round_trip "uv run python -m src.07_eval.round_trip"
-        run holdout_mt "uv run python -m src.07_eval.holdout_mt"
-        run llm_ensemble "uv run python -m src.07_eval.llm_ensemble_judge"
-        run export_corpus "uv run python -m src.07_eval.export_corpus"
+    export)
+        run export_deliverable "uv run python -m src.07_export.export_deliverable"
         ;;
     all)
         run normalize_han "uv run python -m src.01_prep.normalize_han"
@@ -112,19 +103,11 @@ case "$STAGE" in
         run split_vi "uv run python -m src.03_split.split_vi"
         run labse_embed "uv run python -m src.04_embed.labse_embed"
         run vecalign "uv run python -m src.05_align.vecalign_runner"
-        run ner_han "uv run python -m src.06_ner.ner_han"
-        run ner_vi "uv run python -m src.06_ner.ner_vi"
-        run ner_bridge "uv run python -m src.06_ner.ner_bridge"
-        run auto_metrics "uv run python -m src.07_eval.auto_metrics"
-        run flores_sanity "uv run python -m src.07_eval.flores_sanity"
-        run round_trip "uv run python -m src.07_eval.round_trip"
-        run holdout_mt "uv run python -m src.07_eval.holdout_mt"
-        run llm_ensemble "uv run python -m src.07_eval.llm_ensemble_judge"
-        run export_corpus "uv run python -m src.07_eval.export_corpus"
+        run export_deliverable "uv run python -m src.07_export.export_deliverable"
         ;;
     *)
         echo "Unknown stage: $STAGE"
-        echo "Usage: $0 {prep|ocr|split|embed|align|ner|eval|all}"
+        echo "Usage: $0 {prep|ocr|split|embed|align|export|all}"
         exit 1
         ;;
 esac

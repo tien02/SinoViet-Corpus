@@ -117,7 +117,7 @@ else
   log "vLLM docker: SKIPPED (optional)"
   cat <<EOF
   Pipeline runs fine without vLLM — Stage 2b LLM post-correction is OFF by default.
-  Raw PaddleOCR output is used as-is for split/align/eval.
+  Raw PaddleOCR output is used as-is for split/align/export.
 
   To enable vLLM later:
     ./scripts/setup.sh --with-vllm

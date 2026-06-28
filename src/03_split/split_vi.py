@@ -11,7 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.utils.config import VI_OCR_CORRECTED_DIR, VI_SENT  # noqa: E402
+from src.utils.config import (  # noqa: E402
+    VI_OCR_CORRECTED_DIR,
+    VI_OCR_RAW_DIR,
+    VI_SENT,
+)
 
 
 def underthesea_split(text: str) -> list[str]:
@@ -40,9 +44,23 @@ def split_vi_paragraph(para: str) -> list[str]:
 
 
 def main() -> None:
-    if not VI_OCR_CORRECTED_DIR.exists():
-        raise SystemExit(f"Run llm_correct first. Missing: {VI_OCR_CORRECTED_DIR}")
-    per_page_files = sorted(VI_OCR_CORRECTED_DIR.glob("tap*_page_*.txt"))
+    # Prefer LLM-corrected pages; fall back to raw OCR when correction is
+    # skipped/not run (LLM post-correction is optional in this pipeline).
+    src_dir = VI_OCR_CORRECTED_DIR
+    per_page_files = (
+        sorted(src_dir.glob("tap*_page_*.txt")) if src_dir.exists() else []
+    )
+    if not per_page_files:
+        src_dir = VI_OCR_RAW_DIR
+        per_page_files = (
+            sorted(src_dir.glob("tap*_page_*.txt")) if src_dir.exists() else []
+        )
+    if not per_page_files:
+        raise SystemExit(
+            f"No per-page OCR files in {VI_OCR_CORRECTED_DIR} or {VI_OCR_RAW_DIR}. "
+            "Run paddle_ocr (and optionally llm_correct) first."
+        )
+    print(f"split_vi: reading {len(per_page_files)} pages from {src_dir.name}")
 
     VI_SENT.parent.mkdir(parents=True, exist_ok=True)
     idx = 0
@@ -64,6 +82,10 @@ def main() -> None:
                     ) + "\n")
                     idx += 1
 
+    if idx == 0:
+        raise SystemExit(
+            f"split_vi produced 0 sentences from {src_dir} — OCR output is empty?"
+        )
     print(f"sentences: {idx:,}")
     print(f"output: {VI_SENT}")
 

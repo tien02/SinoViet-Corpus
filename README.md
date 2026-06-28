@@ -12,29 +12,24 @@ Pipeline xây dựng corpus song ngữ Hán-Việt từ **Đại Nam Thực Lụ
 - Hán TXT: `data/raw/Đại Nam Thực Lục - 大南寔錄_full.txt` — 233K dòng / 4.9M chars (Wiki文库)
 - 3 PDF Việt: `data/raw/Đại Nam Thực Lục tập {4,5,6} - Quốc Sử Quán Triều Nguyễn.pdf` — 3,242 trang
 
-**Output:**
-- `data/final/hvb_corpus.jsonl` — cặp câu Hán-Việt dóng hàng, kèm điểm LaBSE + entities
-- `data/final/eval/*.json` — báo cáo đánh giá tự động (5 trụ)
+**Output (deliverable):**
+- `data/final/{prefix}_parallel.tsv` + `.xlsx` — cặp câu dóng hàng: `pair_id ⇥ han_sentence ⇥ viet_sentence`
+- `data/final/{prefix}_raw.txt` — OCR thô (Việt). `{prefix}` = mã số sinh viên qua `HVB_DELIVERABLE_PREFIX`.
 
 ## Kiến trúc pipeline
 
 ```
 [Han TXT] → Normalize ──┐
                          ├─→ Sent Split ─┐
-[3 Viet PDFs] → PNG → OCR (PaddleOCR + LLM) ─→ Sent Split ─┤
+[3 Viet PDFs] → PNG → OCR (PaddleOCR + LLM optional) ─→ Sent Split ─┤
                                                             ├─→ LaBSE Embed
                                                             │     ↓
                                                             │  Vecalign
                                                             │     ↓
                                                             │  pairs.jsonl
                                                             │     ↓
-                                                            ├─→ NER (HanLP + Underthesea) ─→ entities.jsonl
-                                                            │     ↓
-                                                            └─→ Export hvb_corpus.jsonl
-                                                                  ↓
-                                                              Evaluation
-                                                  (auto + FLORES + round-trip
-                                                   + hold-out MT + LLM ensemble)
+                                                            └─→ Export deliverable
+                                                               (raw.txt + parallel.tsv/.xlsx)
 ```
 
 ## Quickstart
@@ -75,9 +70,10 @@ Pipeline xây dựng corpus song ngữ Hán-Việt từ **Đại Nam Thực Lụ
 ./scripts/run_pipeline.sh split   # Stage 3: sentence split
 ./scripts/run_pipeline.sh embed   # Stage 4: LaBSE
 ./scripts/run_pipeline.sh align   # Stage 5: Vecalign
-./scripts/run_pipeline.sh ner     # Stage 6: NER + bridge
-./scripts/run_pipeline.sh eval    # Stage 7: 5 eval modules + export
+./scripts/run_pipeline.sh export  # Stage 7: build deliverable (raw.txt + parallel.tsv/.xlsx)
 ```
+
+Set mã số sinh viên cho tên file deliverable: `HVB_DELIVERABLE_PREFIX=<mssv> ./scripts/run_pipeline.sh export`
 
 ### Smoke test (subset)
 
@@ -120,26 +116,17 @@ for line in sys.stdin:
 "
 ```
 
-## Đánh giá chất lượng (Full-auto, 5 trụ)
+## Deliverable (export)
 
-| Trụ | Module | Mô tả |
-|-----|--------|-------|
-| 7a | `auto_metrics.py` | LaBSE cosine, COMET-QE-22, BERTScore, BLEU/chrF bi-directional |
-| 7b | `flores_sanity.py` | FLORES-200 zh-vi: precision@1, COMET (sanity check, NOT domain match) |
-| 7c | `round_trip.py` | Việt→Hán (LLM), chrF/BLEU vs Hán gốc (500 cặp stratified) |
-| 7d | `holdout_mt.py` | Train MarianMT zh-vi 80/20, BLEU/chrF trên hold-out |
-| 7e | `llm_ensemble_judge.py` | Qwen2.5-7B-Instruct chấm 1-5 (500 cặp); α cần ≥ 2 model trong `LLM_MODELS` |
+Stage `export` (`src/07_export/export_deliverable.py`) đọc `pairs.jsonl` + OCR thô và sinh 3 file trong `data/final/`:
 
-Target metrics (xem `docs/04_eval.md`):
+| File | Nội dung |
+|------|----------|
+| `{prefix}_raw.txt` | OCR thô Việt (tap4 + tap5 + tap6) |
+| `{prefix}_parallel.tsv` | `pair_id ⇥ han_sentence ⇥ viet_sentence` |
+| `{prefix}_parallel.xlsx` | 3 cột như trên, định dạng Excel |
 
-| Metric | Target |
-|--------|--------|
-| LaBSE cosine mean | > 0.6 |
-| COMET-QE mean | > 0.5 |
-| Round-trip chrF | > 0.4 |
-| Hold-out MT BLEU | > 15 (skip nếu < 5000 pairs) |
-| Krippendorff α (LLM) | ≥ 0.5 |
-| NER-Bridge F1 | > 0.75 |
+Cặp dị thường (Hán/Việt > `HVB_MAX_PAIR_CHARS`, mặc định 2000 — do Vecalign range-merge) bị loại để giữ chất lượng và vừa giới hạn ô Excel.
 
 ## Cấu trúc project
 
@@ -148,10 +135,9 @@ NLP/
 ├── data/
 │   ├── raw/                      # Input PDFs + TXT (không chỉnh sửa)
 │   ├── interim/                  # Trung gian: han_clean.txt, vi_pages/, ocr/, sentences/, embeds/
-│   ├── aligned/                  # pairs.jsonl + entities.jsonl
-│   ├── gold/                     # Gold standard (OCR gold, NER gold)
-│   ├── benchmark/                # FLORES-200, OPUS (zh-vi)
-│   └── final/                    # Output cuối: hvb_corpus.jsonl + eval/
+│   ├── aligned/                  # pairs.jsonl
+│   ├── gold/                     # Gold standard (OCR gold)
+│   └── final/                    # Deliverable: {prefix}_raw.txt + {prefix}_parallel.tsv/.xlsx
 ├── external/
 │   └── vecalign/                 # Git clone của thompsonb/vecalign
 ├── src/
@@ -161,8 +147,7 @@ NLP/
 │   ├── 03_split/                 # split_han, split_vi
 │   ├── 04_embed/                 # labse_embed
 │   ├── 05_align/                 # vecalign_runner
-│   ├── 06_ner/                   # ner_han, ner_vi, ner_bridge
-│   └── 07_eval/                  # auto_metrics, flores, round_trip, holdout_mt, llm_ensemble, export
+│   └── 07_export/                # export_deliverable
 ├── scripts/
 │   ├── setup.sh                  # Cài môi trường (uv venv + vecalign; vLLM optional)
 │   └── run_pipeline.sh           # Runner có checkpoint
@@ -174,19 +159,16 @@ NLP/
 
 ## Tính năng chính
 
-- **Đa mô hình OCR**: PaddleOCR (GPU) + post-fix bằng local LLM (Qwen2.5-7B-Instruct qua vLLM docker, PagedAttention 5-10x nhanh hơn Ollama). Set `HVB_SKIP_LLM_CORRECT=1` để bypass.
+- **OCR đa GPU**: PaddleOCR (GPU) shard qua nhiều GPU (`HVB_OCR_GPUS`), det cap `HVB_DET_SIDE_LEN` chống OOM. Post-fix bằng local LLM (Qwen2.5-7B-Instruct qua vLLM docker) — optional, set `HVB_SKIP_LLM_CORRECT=1` để bypass.
 - **Dóng hàng đa ngữ**: LaBSE embeddings + Vecalign dynamic programming
-- **NER cross-lingual**: HanLP (Hán) + Underthesea (Việt) + bridge matching bằng Sino-Vietnamese transliteration
-- **5-trụ đánh giá**: auto + FLORES + round-trip + hold-out MT + LLM ensemble (Krippendorff α)
+- **Export deliverable**: TSV + XLSX (`pair_id ⇥ han ⇥ viet`) + OCR thô, lọc cặp dị thường
 - **Checkpoint**: mỗi stage ghi checkpoint, có thể resume
 - **Reproducible**: pin versions trong `pyproject.toml`, paths centralized trong `config.py`
 
 ## Hạn chế
 
-- FLORES-200 zh-vi là tiếng Trung hiện đại — chỉ sanity check pipeline, không claim đánh giá domain
-- LLM local (Qwen2.5-7B-Instruct) chất lượng thấp hơn GPT-4o cho văn cổ → kỳ vọng 10-15% OCR error còn sót
-- Vecalign giả định monotonic alignment — nếu thứ tự PDF khác TXT cần segment theo chapter trước
-- Hold-out MT cần ≥ 5000 cặp aligned để train, nếu ít hơn sẽ tự skip
+- LLM local (Qwen2.5-7B-Instruct) chất lượng thấp hơn GPT-4o cho văn cổ → kỳ vọng 10-15% OCR error còn sót. Bỏ qua LLM correct thì mất nhiều dấu thanh Việt, giảm chất lượng dóng hàng.
+- Vecalign giả định monotonic alignment — nếu thứ tự PDF khác TXT cần segment theo chapter trước (triệu chứng: cặp Hán dài bất thường, bị lọc khi export)
 
 ## Tài liệu chi tiết
 
@@ -194,9 +176,8 @@ NLP/
 - [`docs/01_setup.md`](docs/01_setup.md) — Cài đặt chi tiết + troubleshooting env
 - [`docs/02_data.md`](docs/02_data.md) — Spec input data + định dạng output
 - [`docs/03_pipeline.md`](docs/03_pipeline.md) — Giải thích từng stage + code flow
-- [`docs/04_eval.md`](docs/04_eval.md) — Methodology đánh giá 5 trụ
 - [`docs/05_troubleshooting.md`](docs/05_troubleshooting.md) — Lỗi thường gặp + fix
-- [`docs/06_extend.md`](docs/06_extend.md) — Mở rộng: thêm PDF, đổi model, custom eval
+- [`docs/06_extend.md`](docs/06_extend.md) — Mở rộng: thêm PDF, đổi model
 - [`CLAUDE.md`](CLAUDE.md) — Context cho Claude Code sessions
 
 ## License
