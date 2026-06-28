@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
+
+# Silence pynvml→nvidia-ml-py redirector FutureWarning (torch CUDA init triggers it).
+warnings.filterwarnings("ignore", message="The pynvml package is deprecated.*")
 
 ROOT = Path(__file__).resolve().parents[2]
 
