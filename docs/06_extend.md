@@ -44,7 +44,7 @@ Stages embed/align/ner/eval cũng cần re-run nếu muốn include new data.
 **Bước 1:** Khởi động lại container vLLM với model mới (vLLM tự download weights):
 ```bash
 docker rm -f vllm
-docker run -d --name vllm --gpus=all -p 8000:8000 \
+docker run -d --name vllm --gpus=all -p 8001:8000 \
   -v vllm:/root/.cache/huggingface \
   vllm/vllm-openai:latest \
   --model Qwen/Qwen2.5-14B-Instruct \

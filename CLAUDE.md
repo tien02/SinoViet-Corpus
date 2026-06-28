@@ -20,7 +20,7 @@ Build sentence-aligned Hán-Việt parallel corpus from **Đại Nam Thực Lụ
 - **Package manager:** `uv` (NOT pip / conda). `pyproject.toml` is source of truth.
 - **Python:** 3.11+.
 - **GPU:** CUDA 12.1 wheels for PyTorch + PaddlePaddle (custom uv indexes in `pyproject.toml`).
-- **LLM:** vLLM Docker container (`vllm/vllm-openai:latest`) on `http://localhost:8000/v1`. Model: `Qwen/Qwen2.5-7B-Instruct` (OpenAI-compatible API; PagedAttention 5-10x faster than Ollama). LLM post-correction optional — set `HVB_SKIP_LLM_CORRECT=1` to bypass.
+- **LLM:** vLLM Docker container (`vllm/vllm-openai:latest`) on `http://localhost:8001/v1` (host port 8001 → container 8000). Model: `Qwen/Qwen2.5-7B-Instruct` (OpenAI-compatible API; PagedAttention 5-10x faster than Ollama). LLM post-correction optional — set `HVB_SKIP_LLM_CORRECT=1` to bypass.
 - **Vecalign:** git clone at `external/vecalign/` (not on PyPI).
 
 ## Run commands
@@ -142,7 +142,7 @@ Each stage reads previous stage's output from `data/interim/` or `data/aligned/`
 
 - `uv run python -c "from src.utils import config; print(config.HAN_TXT, config.VI_PDFS)"` — config importable
 - `uv run python -c "import paddleocr, sentence_transformers, hanlp, underthesea; print('OK')"` — deps OK
-- `docker ps | grep vllm` — LLM serving; `curl http://localhost:8000/v1/models` — health-check
+- `docker ps | grep vllm` — LLM serving; `curl http://localhost:8001/v1/models` — health-check
 - `ls data/interim/.checkpoint/` — see which stages have completed
 
 ## Eval targets (after full pipeline)

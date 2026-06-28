@@ -80,7 +80,7 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.device_coun
 python -c "from paddleocr import PaddleOCR; print('OK')"
 
 # 3. vLLM
-curl http://localhost:8000/v1/models | jq '.data[].id'
+curl http://localhost:8001/v1/models | jq '.data[].id'
 # Expected: ["Qwen/Qwen2.5-7B-Instruct"]
 
 # 4. Vecalign
@@ -107,7 +107,7 @@ LLM_MODELS = [VLLM_MODEL]  # backward-compat alias
 Khởi động lại container vLLM với model mới:
 ```bash
 docker rm -f vllm
-docker run -d --name vllm --gpus=all -p 8000:8000 \
+docker run -d --name vllm --gpus=all -p 8001:8000 \
   -v vllm:/root/.cache/huggingface \
   vllm/vllm-openai:latest \
   --model Qwen/Qwen2.5-14B-Instruct \
@@ -143,7 +143,7 @@ error: couldn't find paddlepaddle-gpu in https://www.paddlepaddle.org.cn/package
 docker ps | grep vllm
 docker start vllm
 sleep 10
-curl http://localhost:8000/v1/models
+curl http://localhost:8001/v1/models
 ```
 
 ### Docker: could not select device driver

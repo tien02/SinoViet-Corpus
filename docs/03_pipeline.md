@@ -133,7 +133,7 @@ uv run python -m src.01_prep.normalize_han
 **Params:**
 - `VLLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"` — single model
 - `LLM_MODELS = [VLLM_MODEL]` — backward-compat alias, mặc định dùng `[0]`
-- `VLLM_BASE_URL = "http://localhost:8000/v1"`
+- `VLLM_BASE_URL = "http://localhost:8001/v1"`
 - `LLM_TIMEOUT = 180` seconds
 - Chunk size: 500 chars
 

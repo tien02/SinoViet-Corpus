@@ -60,7 +60,7 @@ Pipeline xây dựng corpus song ngữ Hán-Việt từ **Đại Nam Thực Lụ
 1. Pre-flight + auto-install: Python 3.11, uv, git-lfs, docker, poppler-utils
 2. Tạo `uv venv` Python 3.11 + `uv sync` deps từ `pyproject.toml`
 3. Clone `external/vecalign/` từ `thompsonb/vecalign` (fork live — `neulab/vecalign` đã 404)
-4. Start vLLM docker container (GPU-enabled, tên container: `vllm`) phục vụ `Qwen/Qwen2.5-7B-Instruct` trên `http://localhost:8000/v1` — weights auto-download lần đầu (~5GB)
+4. Start vLLM docker container (GPU-enabled, tên container: `vllm`) phục vụ `Qwen/Qwen2.5-7B-Instruct` trên `http://localhost:8001/v1` (host port 8001 → container 8000) — weights auto-download lần đầu (~5GB)
 5. Health-check endpoint `/v1/models`
 6. Verify NVIDIA GPU
 

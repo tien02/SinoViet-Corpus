@@ -77,7 +77,7 @@ PHONER_MODEL = "NlpHUST/ner-vietnamese-se-lstm"
 
 # LLM backend: vLLM (OpenAI-compatible) — faster than Ollama via PagedAttention.
 # Single Qwen2.5-7B-Instruct serves OCR correct + round-trip + judge.
-VLLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1")
+VLLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://localhost:8001/v1")
 VLLM_API_KEY = os.environ.get("VLLM_API_KEY", "dummy")  # vLLM ignores key, OpenAI client requires non-empty
 VLLM_MODEL = os.environ.get("VLLM_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 LLM_MODELS = [VLLM_MODEL]  # backward-compat alias for downstream stages

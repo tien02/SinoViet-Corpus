@@ -5,7 +5,7 @@
 #   1. Pre-flight checks (warn only, no sudo install)
 #   2. uv venv + uv sync
 #   3. Clone vecalign if missing
-#   4. Start vLLM docker container on :8000
+#   4. Start vLLM docker container on :8001 (host) → container :8000
 #   5. Health-check endpoint
 #
 # Usage:
@@ -14,7 +14,7 @@
 #
 # Env overrides:
 #   VLLM_MODEL   (default Qwen/Qwen2.5-7B-Instruct)
-#   VLLM_PORT    (default 8000)
+#   VLLM_PORT    (default 8001 — host port; container internal stays 8000)
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
 
 VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}"
-VLLM_PORT="${VLLM_PORT:-8000}"
+VLLM_PORT="${VLLM_PORT:-8001}"
 
 log() { printf "\033[1;36m=== %s ===\033[0m\n" "$*"; }
 ok()  { printf "\033[1;32m  ✓ %s\033[0m\n" "$*"; }
@@ -65,7 +65,7 @@ else
 fi
 
 # ---------- 4. vLLM docker ----------
-# OpenAI-compatible API on :8000 with PagedAttention.
+# OpenAI-compatible API on host :${VLLM_PORT} → container :8000 with PagedAttention.
 # One model per container. Weights download on first start (~5GB).
 log "vLLM docker ($VLLM_MODEL on :$VLLM_PORT)"
 if docker ps --format '{{.Names}}' | grep -q '^vllm$'; then

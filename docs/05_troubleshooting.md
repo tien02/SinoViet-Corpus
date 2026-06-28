@@ -53,14 +53,14 @@ httpx.ConnectError: [Errno 111] Connection refused
 **Check:**
 ```bash
 docker ps | grep vllm
-curl http://localhost:8000/v1/models
+curl http://localhost:8001/v1/models
 ```
 
 **Fix:**
 ```bash
 docker start vllm
 sleep 15
-curl http://localhost:8000/v1/models
+curl http://localhost:8001/v1/models
 ```
 
 ### Model not found
