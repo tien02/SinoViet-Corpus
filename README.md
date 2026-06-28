@@ -57,14 +57,11 @@ Pipeline xây dựng corpus song ngữ Hán-Việt từ **Đại Nam Thực Lụ
 ```
 
 `scripts/setup.sh` sẽ:
-1. Pre-flight + auto-install: Python 3.11, uv, git-lfs, docker, poppler-utils
+1. Pre-flight checks (warn-only, không auto-install)
 2. Tạo `uv venv` Python 3.11 + `uv sync` deps từ `pyproject.toml`
 3. Clone `external/vecalign/` từ `thompsonb/vecalign` (fork live — `neulab/vecalign` đã 404)
-4. Start vLLM docker container (GPU-enabled, tên container: `vllm`) phục vụ `Qwen/Qwen2.5-7B-Instruct` trên `http://localhost:8001/v1` (host port 8001 → container 8000) — weights auto-download lần đầu (~5GB)
-5. Health-check endpoint `/v1/models`
-6. Verify NVIDIA GPU
-
-Lệnh cũ `scripts/setup_uv.sh` vẫn hoạt động (subset của `setup.sh`).
+4. Verify NVIDIA GPU
+5. (Optional) `--with-vllm` để start vLLM docker — mặc định skip, pipeline chạy không cần LLM
 
 ### Chạy pipeline
 
@@ -167,7 +164,7 @@ NLP/
 │   ├── 06_ner/                   # ner_han, ner_vi, ner_bridge
 │   └── 07_eval/                  # auto_metrics, flores, round_trip, holdout_mt, llm_ensemble, export
 ├── scripts/
-│   ├── setup_uv.sh               # Cài môi trường
+│   ├── setup.sh                  # Cài môi trường (uv venv + vecalign; vLLM optional)
 │   └── run_pipeline.sh           # Runner có checkpoint
 ├── docs/                         # Hướng dẫn chi tiết (xem docs/README.md)
 ├── pyproject.toml                # uv-managed deps

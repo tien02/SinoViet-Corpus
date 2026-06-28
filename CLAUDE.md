@@ -26,8 +26,9 @@ Build sentence-aligned Hán-Việt parallel corpus from **Đại Nam Thực Lụ
 ## Run commands
 
 ```bash
-# First-time setup
-./scripts/setup_uv.sh
+# First-time setup (uv venv + vecalign; vLLM docker optional)
+./scripts/setup.sh                 # core only
+./scripts/setup.sh --with-vllm     # also start vLLM docker
 
 # Run pipeline stages
 ./scripts/run_pipeline.sh prep     # Stage 1: normalize Hán + PDF → PNG
@@ -113,7 +114,7 @@ Each stage reads previous stage's output from `data/interim/` or `data/aligned/`
 │                               # holdout_mt, llm_ensemble_judge, export_corpus
 ├── external/vecalign/          # git clone
 ├── scripts/
-│   ├── setup_uv.sh             # First-time install
+│   ├── setup.sh                # First-time install (uv venv + vecalign; vLLM optional)
 │   └── run_pipeline.sh         # Stage runner
 ├── docs/                       # Detailed guides (see docs/README.md)
 ├── pyproject.toml              # uv deps

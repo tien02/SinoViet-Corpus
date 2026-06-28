@@ -60,12 +60,11 @@ docker run hello-world
 ```bash
 cd /home/tienda/WorkSpace/HCMUS/NLP
 
-# Chạy script setup (tự động):
-# - uv venv + uv sync
-# - git clone vecalign
-# - docker run vllm (image vllm/vllm-openai:latest)
-# - vLLM tự download weights Qwen/Qwen2.5-7B-Instruct lần đầu
-./scripts/setup_uv.sh
+# Chạy script setup (warn-only pre-flight + uv venv/uv sync + clone vecalign):
+./scripts/setup.sh
+
+# Optional: start vLLM docker (cần cho Stage 2b LLM post-correction):
+./scripts/setup.sh --with-vllm
 ```
 
 ## Verify cài đặt
@@ -125,7 +124,7 @@ PADDLE_BATCH = 4   # mặc định 8
 
 ### Giới hạn GPU cho vLLM
 
-Setup mặc định: `--gpu-memory-utilization 0.9` (chiếm 90% VRAM). Giới hạn thêm: edit `scripts/setup_uv.sh` flag `--gpu-memory-utilization` hoặc `--max-model-len` theo nhu cầu.
+Setup mặc định: `--gpu-memory-utilization 0.9` (chiếm 90% VRAM). Giới hạn thêm: edit `scripts/setup.sh` flag `--gpu-memory-utilization` hoặc `--max-model-len` theo nhu cầu (chỉ kích hoạt qua `--with-vllm`).
 
 ## Troubleshooting setup
 

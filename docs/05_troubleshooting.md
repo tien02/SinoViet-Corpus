@@ -290,7 +290,7 @@ docker logs vllm --tail 50
 
 **Fix:**
 - vLLM tự re-download weights HuggingFace lần đầu start: `docker restart vllm` rồi đợi log "Application startup complete"
-- Hoặc persist volume: `-v vllm:/root/.cache/huggingface` (mặc định trong `setup_uv.sh`)
+- Hoặc persist volume: `-v vllm:/root/.cache/huggingface` (mặc định trong `setup.sh --with-vllm`)
 
 ## Getting help
 
