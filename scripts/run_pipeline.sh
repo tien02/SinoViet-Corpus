@@ -26,6 +26,29 @@ mkdir -p "$CKPT"
 # Set HVB_RUN_LLM_CORRECT=1 to enable vLLM correction (requires vLLM docker).
 RUN_LLM_CORRECT="${HVB_RUN_LLM_CORRECT:-0}"
 
+# GPUs to shard PaddleOCR across (comma-separated CUDA device ids).
+# All 3 docs' pages are sharded round-robin over these GPUs for load balance.
+OCR_GPUS="${HVB_OCR_GPUS:-0,1}"
+
+# Run PaddleOCR sharded across OCR_GPUS (one worker per GPU), then combine.
+paddle_ocr_parallel() {
+    IFS=',' read -ra gpus <<< "$OCR_GPUS"
+    local n="${#gpus[@]}"
+    echo "Sharding OCR across $n GPU(s): $OCR_GPUS"
+    local pids=()
+    for i in "${!gpus[@]}"; do
+        CUDA_VISIBLE_DEVICES="${gpus[$i]}" \
+            uv run python -m src.02_ocr.paddle_ocr --shard "$i" --num-shards "$n" &
+        pids+=("$!")
+    done
+    local rc=0
+    for pid in "${pids[@]}"; do
+        wait "$pid" || rc=1
+    done
+    [ "$rc" -eq 0 ] || { echo "OCR worker failed"; return 1; }
+    uv run python -m src.02_ocr.paddle_ocr --combine
+}
+
 run() {
     local name="$1"; shift
     local cmd="$1"; shift
@@ -44,7 +67,7 @@ case "$STAGE" in
         run pdf_to_images "uv run python -m src.01_prep.pdf_to_images"
         ;;
     ocr)
-        run paddle_ocr "uv run python -m src.02_ocr.paddle_ocr"
+        run paddle_ocr paddle_ocr_parallel
         if [ "$RUN_LLM_CORRECT" = "1" ]; then
             run llm_correct "uv run python -m src.02_ocr.llm_correct"
         else
@@ -78,7 +101,7 @@ case "$STAGE" in
     all)
         run normalize_han "uv run python -m src.01_prep.normalize_han"
         run pdf_to_images "uv run python -m src.01_prep.pdf_to_images"
-        run paddle_ocr "uv run python -m src.02_ocr.paddle_ocr"
+        run paddle_ocr paddle_ocr_parallel
         if [ "$RUN_LLM_CORRECT" = "1" ]; then
             run llm_correct "uv run python -m src.02_ocr.llm_correct"
         else
