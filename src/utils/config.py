@@ -75,9 +75,20 @@ ALIGN_MIN_SCORE = float(os.environ.get("ALIGN_MIN_SCORE", "0.5"))
 HANLP_MODEL = "CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_BASE_ZH"
 PHONER_MODEL = "NlpHUST/ner-vietnamese-se-lstm"
 
-OLLAMA_HOST = "http://localhost:11434"
-LLM_MODELS = ["qwen2.5:7b", "seallm:7b"]
+# LLM backend: vLLM (OpenAI-compatible) — faster than Ollama via PagedAttention.
+# Single Qwen2.5-7B-Instruct serves OCR correct + round-trip + judge.
+VLLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1")
+VLLM_API_KEY = os.environ.get("VLLM_API_KEY", "dummy")  # vLLM ignores key, OpenAI client requires non-empty
+VLLM_MODEL = os.environ.get("VLLM_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+LLM_MODELS = [VLLM_MODEL]  # backward-compat alias for downstream stages
 LLM_TIMEOUT = 180
+LLM_TEMPERATURE = 0.2
+LLM_MAX_TOKENS = 4096
+
+# Optional LLM post-correction (Stage 2b).
+# Set HVB_SKIP_LLM_CORRECT=1 to copy raw OCR → corrected dir and skip vLLM call.
+# Useful when vLLM unavailable or for fast smoke tests on clean OCR.
+SKIP_LLM_CORRECT = bool(os.environ.get("HVB_SKIP_LLM_CORRECT", ""))
 
 COMET_MODEL = "unmt/comet-qe-22"
 HOLDOUT_RATIO = 0.2

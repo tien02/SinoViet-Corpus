@@ -7,7 +7,7 @@ Hướng dẫn chi tiết cho pipeline Hán-Việt Đại Nam Thực Lục.
 | Doc | Nội dung |
 |-----|----------|
 | [00_problem.md](00_problem.md) | **Đọc đầu tiên** — bài toán, pipeline lý do, chiến lược đánh giá không-gold |
-| [01_setup.md](01_setup.md) | Cài đặt môi trường: uv, Ollama docker, system deps, verification |
+| [01_setup.md](01_setup.md) | Cài đặt môi trường: uv, vLLM docker, system deps, verification |
 | [02_data.md](02_data.md) | Spec input data, định dạng output, schema JSONL |
 | [03_pipeline.md](03_pipeline.md) | Chi tiết từng stage: code flow, params, outputs |
 | [04_eval.md](04_eval.md) | Methodology đánh giá 5 trụ, metric definitions, targets |

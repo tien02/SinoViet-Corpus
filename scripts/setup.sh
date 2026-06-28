@@ -6,12 +6,16 @@
 #   1. Python 3.11, uv, git, git-lfs, docker, poppler-utils
 #   2. Project venv + deps via uv sync
 #   3. external/vecalign clone (thompsonb/vecalign)
-#   4. Ollama docker container + qwen2.5:7b + seallm:7b
+#   4. vLLM docker container serving Qwen2.5-7B-Instruct on :8000
 #   5. NVIDIA GPU sanity check
 #
 # Usage:
 #   ./scripts/setup.sh           # full bootstrap
 #   ./scripts/setup.sh --check   # pre-flight only, no installs
+#
+# Env overrides:
+#   VLLM_MODEL   (default Qwen/Qwen2.5-7B-Instruct)
+#   VLLM_PORT    (default 8000)
 #
 # Safe to re-run — skips already-done steps.
 
@@ -22,6 +26,9 @@ cd "$ROOT"
 
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
+
+VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}"
+VLLM_PORT="${VLLM_PORT:-8000}"
 
 log() { printf "\033[1;36m=== %s ===\033[0m\n" "$*"; }
 ok()  { printf "\033[1;32m  ✓ %s\033[0m\n" "$*"; }
@@ -119,41 +126,49 @@ else
   ok "vecalign already cloned"
 fi
 
-# ---------- 9. Ollama docker ----------
-log "Ollama docker container"
-if docker ps --format '{{.Names}}' | grep -q '^ollama$'; then
-  ok "ollama container running"
-elif docker ps -a --format '{{.Names}}' | grep -q '^ollama$'; then
-  docker start ollama
-  ok "ollama container started (was stopped)"
+# ---------- 9. vLLM docker ----------
+# vLLM serves an OpenAI-compatible API on :8000 with PagedAttention
+# (5-10x faster than Ollama). One model per container.
+log "vLLM docker container ($VLLM_MODEL on :$VLLM_PORT)"
+if docker ps --format '{{.Names}}' | grep -q '^vllm$'; then
+  ok "vllm container running"
+elif docker ps -a --format '{{.Names}}' | grep -q '^vllm$'; then
+  docker start vllm
+  ok "vllm container started (was stopped)"
 else
-  docker run -d --name ollama \
+  docker run -d --name vllm \
     --gpus=all \
-    -p 11434:11434 \
-    -v ollama:/root/.ollama \
+    -p "${VLLM_PORT}:8000" \
+    -v vllm:/root/.cache/huggingface \
     --restart unless-stopped \
-    ollama/ollama:latest
-  echo "  waiting 10s for ollama to start..."
-  sleep 10
-  ok "ollama container created + started"
+    vllm/vllm-openai:latest \
+    --model "$VLLM_MODEL" \
+    --gpu-memory-utilization 0.9 \
+    --max-model-len 4096 \
+    --dtype half
+  echo "  waiting 30s for vLLM to load model + weights..."
+  sleep 30
+  ok "vllm container created + started"
 fi
 
-# ---------- 10. Pull LLM models ----------
-log "Pull LLM models (~5GB total)"
-for model in qwen2.5:7b seallm:7b; do
-  if docker exec ollama ollama list | awk '{print $1}' | grep -qx "$model"; then
-    ok "$model already pulled"
-  else
-    echo "  pulling $model..."
-    docker exec ollama ollama pull "$model"
-    ok "$model pulled"
+# ---------- 10. Health-check vLLM endpoint ----------
+log "vLLM health check"
+for i in 1 2 3 4 5 6; do
+  if curl -fsS "http://localhost:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
+    ok "vLLM ready at http://localhost:${VLLM_PORT}/v1"
+    break
   fi
+  warn "vLLM not ready (attempt $i/6), waiting 15s..."
+  sleep 15
 done
 
 # ---------- DONE ----------
 echo ""
 log "Setup complete"
-cat <<'EOF'
+cat <<EOF
+
+vLLM serving: $VLLM_MODEL on http://localhost:${VLLM_PORT}/v1
+Override via: VLLM_MODEL=... VLLM_PORT=... ./scripts/setup.sh
 
 Next steps:
   # Smoke test (10 pages, ~5 min):
@@ -163,7 +178,10 @@ Next steps:
   HVB_SUBSET=10 HVB_SUBSET_OFFSET=50 ./scripts/run_pipeline.sh embed
   HVB_SUBSET=10 HVB_SUBSET_OFFSET=50 ./scripts/run_pipeline.sh align
 
-  # Full pipeline (3-5 days GPU):
+  # Skip LLM post-correction (copy raw OCR through):
+  HVB_SKIP_LLM_CORRECT=1 HVB_SUBSET=10 HVB_SUBSET_OFFSET=50 ./scripts/run_pipeline.sh ocr
+
+  # Full pipeline (2-3 days GPU):
   ./scripts/run_pipeline.sh all
 
 Activate venv for non-scripted work:

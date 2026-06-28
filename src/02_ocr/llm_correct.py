@@ -1,18 +1,26 @@
-"""Stage 2b: LLM post-correction of OCR via Ollama docker.
+"""Stage 2b: LLM post-correction of OCR via vLLM (OpenAI-compatible API).
 
-Chunks raw OCR by ~500 chars, asks Qwen2.5/SeaLLM to fix common OCR errors
+Chunks raw OCR by ~500 chars, asks Qwen2.5-7B-Instruct to fix common OCR errors
 (font Nôm, dấu câu cổ, broken Vietnamese diacritics).
+
+Skip via HVB_SKIP_LLM_CORRECT=1: copies raw → corrected, exits early.
+Useful for smoke tests on clean OCR or when vLLM is unavailable.
 """
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.config import (  # noqa: E402
-    LLM_MODELS,
+    LLM_MAX_TOKENS,
+    LLM_TEMPERATURE,
     LLM_TIMEOUT,
-    OLLAMA_HOST,
+    SKIP_LLM_CORRECT,
+    VLLM_API_KEY,
+    VLLM_BASE_URL,
+    VLLM_MODEL,
     VI_OCR_CORRECTED_DIR,
     VI_OCR_RAW_DIR,
 )
@@ -47,23 +55,32 @@ def chunk_text(text: str, max_chars: int = 500) -> list[str]:
     return out
 
 
+def make_client():
+    from openai import OpenAI
+
+    return OpenAI(
+        base_url=VLLM_BASE_URL,
+        api_key=VLLM_API_KEY,
+        timeout=LLM_TIMEOUT,
+    )
+
+
 def correct_chunk(client, model: str, chunk: str) -> str:
-    resp = client.chat(
+    resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": PROMPT_TMPL.format(chunk=chunk)}],
-        options={"temperature": 0.2, "num_ctx": 4096},
+        temperature=LLM_TEMPERATURE,
+        max_tokens=LLM_MAX_TOKENS,
     )
-    return resp["message"]["content"].strip()
+    return resp.choices[0].message.content.strip()
 
 
-def correct_file(raw_path: Path, model: str) -> str:
-    import ollama
-
-    client = ollama.Client(host=OLLAMA_HOST)
+def correct_file(raw_path: Path, client, model: str) -> str:
     text = raw_path.read_text(encoding="utf-8")
     chunks = chunk_text(text)
     fixed = []
     from tqdm import tqdm
+
     for c in tqdm(chunks, desc=f"{raw_path.stem}({model})", leave=False):
         try:
             fixed.append(correct_chunk(client, model, c))
@@ -73,15 +90,23 @@ def correct_file(raw_path: Path, model: str) -> str:
     return "\n\n".join(fixed)
 
 
-def main(model: str = LLM_MODELS[0]) -> None:
+def main(model: str = VLLM_MODEL) -> None:
     VI_OCR_CORRECTED_DIR.mkdir(parents=True, exist_ok=True)
     raw_files = sorted(VI_OCR_RAW_DIR.glob("tap*.txt"))
     if not raw_files:
         raise SystemExit(f"No raw OCR txt in {VI_OCR_RAW_DIR}. Run paddle_ocr first.")
-    print(f"Correct {len(raw_files)} files with {model}")
+
+    if SKIP_LLM_CORRECT:
+        print(f"SKIP_LLM_CORRECT=1 — copy raw → corrected ({len(raw_files)} files)")
+        for rf in raw_files:
+            shutil.copy(rf, VI_OCR_CORRECTED_DIR / rf.name)
+        return
+
+    print(f"Correct {len(raw_files)} files with {model} via vLLM {VLLM_BASE_URL}")
+    client = make_client()
     for rf in raw_files:
         out = VI_OCR_CORRECTED_DIR / rf.name
-        corrected = correct_file(rf, model)
+        corrected = correct_file(rf, client, model)
         out.write_text(corrected, encoding="utf-8")
         print(f"  {rf.name} -> {out}")
 
@@ -90,6 +115,6 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default=LLM_MODELS[0], choices=LLM_MODELS)
+    ap.add_argument("--model", default=VLLM_MODEL)
     args = ap.parse_args()
     main(args.model)

@@ -1,7 +1,8 @@
-"""Stage 7e: LLM ensemble judge.
+"""Stage 7e: LLM judge via vLLM (OpenAI-compatible).
 
-Each LLM (qwen2.5:7b, seallm:7b) scores 500 pairs on 5 criteria (1-5).
-Compute Krippendorff alpha for cross-LLM agreement.
+Single Qwen2.5-7B-Instruct scores 500 pairs on 5 criteria (1-5).
+With 1 model, Krippendorff alpha is undefined — report mean-only.
+Extend LLM_MODELS in config to enable multi-rater alpha.
 """
 from __future__ import annotations
 
@@ -17,12 +18,15 @@ from src.utils.config import (  # noqa: E402
     FINAL,
     LLM_JUDGE_RUBRIC,
     LLM_MODELS,
+    LLM_TEMPERATURE,
     LLM_TIMEOUT,
-    OLLAMA_HOST,
     PAIRS_JSONL,
+    VLLM_API_KEY,
+    VLLM_BASE_URL,
 )
 
 OUT = FINAL / "eval" / "llm_ensemble_judge.json"
+MAX_TOKENS_JUDGE = 512
 PROMPT = """Danh gia cap Han-Viet sau theo 5 tieu chi (1-5, 5 = xuat sac).
 Chi tra ve JSON, khong giai thich.
 
@@ -39,6 +43,16 @@ Tieu chi:
 JSON:
 {{"adequacy": N, "fluency": N, "alignment": N, "fidelity": N, "terminology": N}}
 """
+
+
+def make_client():
+    from openai import OpenAI
+
+    return OpenAI(
+        base_url=VLLM_BASE_URL,
+        api_key=VLLM_API_KEY,
+        timeout=LLM_TIMEOUT,
+    )
 
 
 def load_pairs() -> list[dict]:
@@ -69,13 +83,13 @@ def parse_judge_response(text: str) -> dict:
 
 
 def judge_one(client, model: str, src: str, tgt: str) -> dict:
-    resp = client.chat(
+    resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": PROMPT.format(src=src, tgt=tgt)}],
-        options={"temperature": 0.1, "num_ctx": 2048, "format": "json"},
-        timeout=LLM_TIMEOUT,
+        temperature=max(0.1, LLM_TEMPERATURE),
+        max_tokens=MAX_TOKENS_JUDGE,
     )
-    return parse_judge_response(resp["message"]["content"])
+    return parse_judge_response(resp.choices[0].message.content)
 
 
 def main() -> None:
@@ -84,11 +98,10 @@ def main() -> None:
     pairs = load_pairs()
     random.seed(42)
     sample = stratified_sample(pairs, EVAL_SAMPLE)
-    print(f"sample: {len(sample)} pairs x {len(LLM_MODELS)} LLMs")
+    print(f"sample: {len(sample)} pairs x {len(LLM_MODELS)} LLM(s) via vLLM {VLLM_BASE_URL}")
 
-    import ollama
     from tqdm import tqdm
-    client = ollama.Client(host=OLLAMA_HOST)
+    client = make_client()
 
     all_scores: dict[str, list[dict]] = {m: [] for m in LLM_MODELS}
     for model in LLM_MODELS:
@@ -99,22 +112,26 @@ def main() -> None:
                 scores = {"error": str(e)}
             all_scores[model].append(scores)
 
-    # Krippendorff alpha per criterion
-    import krippendorff
-    alpha_per = {}
-    for crit in LLM_JUDGE_RUBRIC:
-        rows = []
-        for model in LLM_MODELS:
-            row = [all_scores[model][i].get(crit, None) for i in range(len(sample))]
-            rows.append(row)
-        try:
-            alpha = krippendorff.alpha(reliability_data=rows, level_of_measurement="ordinal")
-        except Exception:
-            alpha = None
-        alpha_per[crit] = alpha
+    # Krippendorff alpha per criterion (requires ≥2 raters)
+    alpha_per: dict[str, float | None] = {crit: None for crit in LLM_JUDGE_RUBRIC}
+    if len(LLM_MODELS) >= 2:
+        import krippendorff
+        for crit in LLM_JUDGE_RUBRIC:
+            rows = [
+                [all_scores[m][i].get(crit, None) for i in range(len(sample))]
+                for m in LLM_MODELS
+            ]
+            try:
+                alpha_per[crit] = krippendorff.alpha(
+                    reliability_data=rows,
+                    level_of_measurement="ordinal",
+                )
+            except Exception:
+                alpha_per[crit] = None
+    else:
+        print(f"[info] {len(LLM_MODELS)} model — Krippendorff α undefined, mean-only report")
 
-    # Mean scores per model
-    means_per = {}
+    means_per: dict[str, dict[str, float]] = {}
     for model in LLM_MODELS:
         means = {}
         for crit in LLM_JUDGE_RUBRIC:

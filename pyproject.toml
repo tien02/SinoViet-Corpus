@@ -30,8 +30,8 @@ dependencies = [
     "datasets>=2.20",
     # agreement
     "krippendorff>=0.7",
-    # Ollama HTTP client (talks to docker ollama on :11434)
-    "ollama>=0.3",
+    # vLLM OpenAI-compatible client (talks to docker vllm on :8000)
+    "openai>=1.50",
     # utils
     "tqdm>=4",
     "pyyaml>=6",

@@ -42,7 +42,7 @@ RuntimeError: CUDA out of memory. Tried to allocate 2.00 GiB
 - Đổi sang Gemini/GPT-4o Vision OCR (API) nếu local fail
 - Post-process mạnh hơn: tăng LLM chunk overlap, multi-shot prompt
 
-## LLM/Ollama errors
+## LLM/vLLM errors
 
 ### Connection refused
 
@@ -52,26 +52,32 @@ httpx.ConnectError: [Errno 111] Connection refused
 
 **Check:**
 ```bash
-docker ps | grep ollama
-curl http://localhost:11434/api/tags
+docker ps | grep vllm
+curl http://localhost:8000/v1/models
 ```
 
 **Fix:**
 ```bash
-docker start ollama
-sleep 10
-curl http://localhost:11434/api/tags
+docker start vllm
+sleep 15
+curl http://localhost:8000/v1/models
 ```
 
 ### Model not found
 
 ```
-ollama.ResponseError: model 'qwen2.5:7b' not found, try pulling it first
+openai.NotFoundError: 404 The model `Qwen/Qwen2.5-7B-Instruct` does not exist
+```
+hoặc vLLM log trong `docker logs vllm`:
+```
+ERROR: Model Qwen/Qwen2.5-7B-Instruct not loadable
 ```
 
 **Fix:**
 ```bash
-docker exec ollama ollama pull qwen2.5:7b
+docker logs vllm --tail 50
+# vLLM tự download weights lần đầu; nếu network fail, restart:
+docker restart vllm
 ```
 
 ### LLM timeout (> 180s)
@@ -266,25 +272,25 @@ mv /tmp/clean.jsonl data/interim/han_sentences.jsonl
 
 **Check:** Tên stage trong `run_pipeline.sh` case statement phải match `run` first arg.
 
-## Ollama docker issues
+## vLLM docker issues
 
 ### Container restart loop
 
 ```bash
-docker logs ollama --tail 50
+docker logs vllm --tail 50
 ```
 
 **Common:**
-- VRAM thiếu cho model → pull model nhỏ hơn (`qwen2.5:3b` thay vì `7b`)
+- VRAM thiếu cho model → giảm `--gpu-memory-utilization` hoặc chọn model nhỏ hơn
 - Permission volume → fix ownership bằng `chown`
 
-### Lost models sau reboot
+### Lost weights sau reboot
 
 **Nguyên nhân:** Volume bị clear.
 
 **Fix:**
-- Re-pull: `docker exec ollama ollama pull qwen2.5:7b`
-- Hoặc persist volume: `-v ollama:/root/.ollama` (mặc định trong `setup_uv.sh`)
+- vLLM tự re-download weights HuggingFace lần đầu start: `docker restart vllm` rồi đợi log "Application startup complete"
+- Hoặc persist volume: `-v vllm:/root/.cache/huggingface` (mặc định trong `setup_uv.sh`)
 
 ## Getting help
 

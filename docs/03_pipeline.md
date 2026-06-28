@@ -11,7 +11,7 @@ Stage 1: prep
 
 Stage 2: ocr
   ├── 2a paddle_ocr        (PNG -> vi_ocr_raw/*.txt)
-  └── 2b llm_correct       (raw -> vi_ocr_corrected/*.txt via Ollama)
+  └── 2b llm_correct       (raw -> vi_ocr_corrected/*.txt via vLLM)
 
 Stage 3: split
   ├── 3a split_han         (han_clean.txt -> han_sentences.jsonl)
@@ -33,7 +33,7 @@ Stage 7: eval
   ├── 7b flores_sanity     (FLORES-200 zh-vi)
   ├── 7c round_trip        (Viet -> Han via LLM)
   ├── 7d holdout_mt        (train MarianMT, eval hold-out)
-  ├── 7e llm_ensemble      (Qwen+SeaLLM judge, Krippendorff α)
+  ├── 7e llm_ensemble      (Qwen2.5-7B-Instruct judge, mean-only với 1 model)
   └── export_corpus        (final hvb_corpus.jsonl)
 ```
 
@@ -131,8 +131,9 @@ uv run python -m src.01_prep.normalize_han
 **Output:** `data/interim/vi_ocr_corrected/tap*.txt`
 
 **Params:**
-- `LLM_MODELS = ["qwen2.5:7b", "seallm:7b"]` — default dùng `[0]`
-- `OLLAMA_HOST = "http://localhost:11434"`
+- `VLLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"` — single model
+- `LLM_MODELS = [VLLM_MODEL]` — backward-compat alias, mặc định dùng `[0]`
+- `VLLM_BASE_URL = "http://localhost:8000/v1"`
 - `LLM_TIMEOUT = 180` seconds
 - Chunk size: 500 chars
 
@@ -153,7 +154,7 @@ uv run python -m src.01_prep.normalize_han
 uv run python -m src.02_ocr.llm_correct
 
 # Specific model
-uv run python -m src.02_ocr.llm_correct --model seallm:7b
+uv run python -m src.02_ocr.llm_correct --model Qwen/Qwen2.5-7B-Instruct
 ```
 
 **Performance:** ~2-3 sec/chunk × ~6500 chunks = ~5 giờ
@@ -335,7 +336,7 @@ Force re-run: xóa checkpoint file tương ứng rồi gọi lại stage.
 | 1a normalize_han | 30 sec | 0 |
 | 1b pdf_to_images | 1.5 giờ | 0 |
 | 2a paddle_ocr | 3-4 giờ | ~4 GB |
-| 2b llm_correct | 5 giờ | ~6 GB (Ollama) |
+| 2b llm_correct | 5 giờ | ~6 GB (vLLM) |
 | 3a/b split | 5-15 min | 0 |
 | 4 labse_embed | 30-45 min | ~3 GB |
 | 5 vecalign | 1-2 giờ | ~2 GB |

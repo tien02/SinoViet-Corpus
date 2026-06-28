@@ -42,7 +42,7 @@ Pipeline xây dựng corpus song ngữ Hán-Việt từ **Đại Nam Thực Lụ
 ### Yêu cầu hệ thống
 - Python 3.11
 - GPU NVIDIA (đã test RTX 3060 12GB x2)
-- Docker (cho Ollama)
+- Docker (cho vLLM — OpenAI-compatible serving)
 - `poppler-utils` (cho pdf2image)
 - `git` (clone vecalign)
 
@@ -60,8 +60,8 @@ Pipeline xây dựng corpus song ngữ Hán-Việt từ **Đại Nam Thực Lụ
 1. Pre-flight + auto-install: Python 3.11, uv, git-lfs, docker, poppler-utils
 2. Tạo `uv venv` Python 3.11 + `uv sync` deps từ `pyproject.toml`
 3. Clone `external/vecalign/` từ `thompsonb/vecalign` (fork live — `neulab/vecalign` đã 404)
-4. Start Ollama docker container (GPU-enabled, tên container: `ollama`)
-5. Pull 2 models: `qwen2.5:7b`, `seallm:7b` (~5GB VRAM mỗi model khi chạy)
+4. Start vLLM docker container (GPU-enabled, tên container: `vllm`) phục vụ `Qwen/Qwen2.5-7B-Instruct` trên `http://localhost:8000/v1` — weights auto-download lần đầu (~5GB)
+5. Health-check endpoint `/v1/models`
 6. Verify NVIDIA GPU
 
 Lệnh cũ `scripts/setup_uv.sh` vẫn hoạt động (subset của `setup.sh`).
@@ -74,7 +74,7 @@ Lệnh cũ `scripts/setup_uv.sh` vẫn hoạt động (subset của `setup.sh`).
 
 # Theo stage
 ./scripts/run_pipeline.sh prep    # Stage 1: normalize Han + PDF → PNG
-./scripts/run_pipeline.sh ocr     # Stage 2: PaddleOCR + Ollama fix
+./scripts/run_pipeline.sh ocr     # Stage 2: PaddleOCR + vLLM fix (or HVB_SKIP_LLM_CORRECT=1)
 ./scripts/run_pipeline.sh split   # Stage 3: sentence split
 ./scripts/run_pipeline.sh embed   # Stage 4: LaBSE
 ./scripts/run_pipeline.sh align   # Stage 5: Vecalign
@@ -131,7 +131,7 @@ for line in sys.stdin:
 | 7b | `flores_sanity.py` | FLORES-200 zh-vi: precision@1, COMET (sanity check, NOT domain match) |
 | 7c | `round_trip.py` | Việt→Hán (LLM), chrF/BLEU vs Hán gốc (500 cặp stratified) |
 | 7d | `holdout_mt.py` | Train MarianMT zh-vi 80/20, BLEU/chrF trên hold-out |
-| 7e | `llm_ensemble_judge.py` | Qwen2.5 + SeaLLM chấm 1-5 (500 cặp), Krippendorff α |
+| 7e | `llm_ensemble_judge.py` | Qwen2.5-7B-Instruct chấm 1-5 (500 cặp); α cần ≥ 2 model trong `LLM_MODELS` |
 
 Target metrics (xem `docs/04_eval.md`):
 
@@ -160,7 +160,7 @@ NLP/
 ├── src/
 │   ├── utils/config.py           # Tất cả paths, model IDs, hyperparams
 │   ├── 01_prep/                  # normalize_han, pdf_to_images
-│   ├── 02_ocr/                   # paddle_ocr, llm_correct (Ollama)
+│   ├── 02_ocr/                   # paddle_ocr, llm_correct (vLLM, optional via HVB_SKIP_LLM_CORRECT)
 │   ├── 03_split/                 # split_han, split_vi
 │   ├── 04_embed/                 # labse_embed
 │   ├── 05_align/                 # vecalign_runner
@@ -177,7 +177,7 @@ NLP/
 
 ## Tính năng chính
 
-- **Đa mô hình OCR**: PaddleOCR (GPU) + post-fix bằng local LLM (Qwen2.5/SeaLLM qua Ollama docker)
+- **Đa mô hình OCR**: PaddleOCR (GPU) + post-fix bằng local LLM (Qwen2.5-7B-Instruct qua vLLM docker, PagedAttention 5-10x nhanh hơn Ollama). Set `HVB_SKIP_LLM_CORRECT=1` để bypass.
 - **Dóng hàng đa ngữ**: LaBSE embeddings + Vecalign dynamic programming
 - **NER cross-lingual**: HanLP (Hán) + Underthesea (Việt) + bridge matching bằng Sino-Vietnamese transliteration
 - **5-trụ đánh giá**: auto + FLORES + round-trip + hold-out MT + LLM ensemble (Krippendorff α)
@@ -187,7 +187,7 @@ NLP/
 ## Hạn chế
 
 - FLORES-200 zh-vi là tiếng Trung hiện đại — chỉ sanity check pipeline, không claim đánh giá domain
-- LLM local (Qwen/SeaLLM) chất lượng thấp hơn GPT-4o cho văn cổ → kỳ vọng 10-15% OCR error còn sót
+- LLM local (Qwen2.5-7B-Instruct) chất lượng thấp hơn GPT-4o cho văn cổ → kỳ vọng 10-15% OCR error còn sót
 - Vecalign giả định monotonic alignment — nếu thứ tự PDF khác TXT cần segment theo chapter trước
 - Hold-out MT cần ≥ 5000 cặp aligned để train, nếu ít hơn sẽ tự skip
 

@@ -1,13 +1,12 @@
 """Stage 7c: Round-trip consistency.
 
-Viet -> Han via LLM, compare to original Han. chrF++/BLEU/BERTScore.
-Sample 500 pairs stratified by LaBSE score.
+Viet -> Han via vLLM (OpenAI-compatible), compare to original Han.
+chrF++/BLEU/BERTScore. Sample 500 pairs stratified by LaBSE score.
 """
 from __future__ import annotations
 
 import json
 import random
-import statistics
 import sys
 from pathlib import Path
 
@@ -16,18 +15,31 @@ from src.utils.config import (  # noqa: E402
     DEVICE,
     EVAL_SAMPLE,
     FINAL,
-    LLM_MODELS,
+    LLM_TEMPERATURE,
     LLM_TIMEOUT,
-    OLLAMA_HOST,
     PAIRS_JSONL,
+    VLLM_API_KEY,
+    VLLM_BASE_URL,
+    VLLM_MODEL,
 )
 
 OUT = FINAL / "eval" / "round_trip.json"
+MAX_TOKENS_RT = 2048
 PROMPT = """Dich cau Viet sau sang Han van (Classical Chinese).
 Giu phong cach Dai Nam Thuc Luc. Chi tra ve ban dich, khong giai thich.
 
 Viet: {vi}
 Han:"""
+
+
+def make_client():
+    from openai import OpenAI
+
+    return OpenAI(
+        base_url=VLLM_BASE_URL,
+        api_key=VLLM_API_KEY,
+        timeout=LLM_TIMEOUT,
+    )
 
 
 def stratified_sample(pairs: list[dict], n: int) -> list[dict]:
@@ -47,26 +59,26 @@ def stratified_sample(pairs: list[dict], n: int) -> list[dict]:
 
 
 def translate_vi_to_han(client, model: str, vi: str) -> str:
-    resp = client.chat(
+    resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": PROMPT.format(vi=vi)}],
-        options={"temperature": 0.2, "num_ctx": 2048},
-        timeout=LLM_TIMEOUT,
+        temperature=LLM_TEMPERATURE,
+        max_tokens=MAX_TOKENS_RT,
     )
-    return resp["message"]["content"].strip()
+    return resp.choices[0].message.content.strip()
 
 
-def main(model: str = LLM_MODELS[0]) -> None:
+def main(model: str = VLLM_MODEL) -> None:
     if not PAIRS_JSONL.exists():
         raise SystemExit(f"Run vecalign_runner first. Missing: {PAIRS_JSONL}")
     pairs = [json.loads(l) for l in PAIRS_JSONL.open(encoding="utf-8")]
+    random.seed(42)
     sample = stratified_sample(pairs, EVAL_SAMPLE)
-    print(f"sample: {len(sample)} pairs ({model})")
+    print(f"sample: {len(sample)} pairs ({model}) via vLLM {VLLM_BASE_URL}")
 
-    import ollama
-    client = ollama.Client(host=OLLAMA_HOST)
-
+    client = make_client()
     from tqdm import tqdm
+
     results = []
     for p in tqdm(sample, desc="round-trip"):
         try:
@@ -116,6 +128,6 @@ def main(model: str = LLM_MODELS[0]) -> None:
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default=LLM_MODELS[0])
+    ap.add_argument("--model", default=VLLM_MODEL)
     args = ap.parse_args()
     main(args.model)

@@ -89,7 +89,7 @@ cross-lingual NER historical, contrastive linguistics Hán-Việt.
 | Stage | Làm gì | Tại sao |
 |-------|--------|---------|
 | **1. prep** | Normalize Hán TXT (strip Wiki header, fix punctuation fullwidth→halfwidth); PDF→PNG @ 300 DPI | OCR cần ảnh sạch; split cần text normalize |
-| **2. OCR** | PaddleOCR (PPOCRv5 vietnamese) → text thô; Ollama LLM (Qwen2.5/SeaLLM) fix lỗi OCR (font cổ, Nôm, dấu câu) | Scan 1961 chất lượng thấp, PaddleOCR đơn độc ~10–15% CER; LLM post-fix giảm xuống ~5% |
+| **2. OCR** | PaddleOCR (PPOCRv5 vietnamese) → text thô; vLLM LLM (Qwen2.5-7B-Instruct) fix lỗi OCR (font cổ, Nôm, dấu câu) | Scan 1961 chất lượng thấp, PaddleOCR đơn độc ~10–15% CER; LLM post-fix giảm xuống ~5% |
 | **3. split** | Tách câu: Hán theo `。！？` + HanLP; Việt theo Underthesea `sent_tokenize` | Vecalign cần đơn vị câu, không phải đoạn |
 | **4. embed** | LaBSE (sentence-transformers) tạo 768-dim vector cho mỗi câu | Vecalign dùng cosine similarity để quyết align; LaBSE cross-lingual tốt cho cả Hán lẫn Việt |
 | **5. align** | Vecalign dynamic programming trên similarity matrix | Tìm monotonic alignment tối ưu giữa 2 chuỗi câu; DP O(n·m) cho phép 1-many và many-1 (xử lý câu dài/ngắn không khớp 1-1) |
@@ -146,15 +146,15 @@ con người annotate đúng/sai. Nhưng:
 - Tự skip nếu < 5000 pairs (check `HOLDOUT_MIN_PAIRS` trong config)
 
 ### Trụ 7e — LLM ensemble judge
-- 2 LLM (Qwen2.5 7B + SeaLLM 7B) chấm 1–5 mỗi cặp trên 5 rubric:
+- 1 LLM (Qwen2.5-7B-Instruct) chấm 1–5 mỗi cặp trên 5 rubric — single rater nên Krippendorff α undefined; eval chỉ report mean-only:
   - Adequacy (đầy đủ ý)
   - Fluency (thông suốt tự nhiên)
   - Alignment (có thực sự là dịch của nhau)
   - Fidelity (trung thực nguồn)
   - Terminology (đúng thuật ngữ lịch sử)
-- Cross-model **Krippendorff's α** (thay Cohen's κ cho ≥ 2 raters)
-- **Ý nghĩa**: nếu 2 LLM độc lập đồng thuận, độ tin cậy cao hơn 1 LLM
-- **Hạn chế**: LLM share biases → α target 0.5 (không 0.7 như human κ)
+- Cross-model **Krippendorff's α** (thay Cohen's κ cho ≥ 2 raters) — chỉ khả thi khi `LLM_MODELS` có ≥ 2 model; mặc định 1 model → α = None, report mean-only
+- **Ý nghĩa**: nếu ≥ 2 LLM độc lập đồng thuận, độ tin cậy cao hơn 1 LLM
+- **Hạn chế**: LLM share biases → α target 0.5 (không 0.7 như human κ); với 1 model, không có độ đo đồng thuận giữa các rater
 - 500 cặp stratified
 
 ### Trụ 7f — NER-Bridge coverage
@@ -169,9 +169,9 @@ con người annotate đúng/sai. Nhưng:
 | LaBSE cosine mean | > 0.6 | sentence-transformers |
 | COMET-QE mean | > 0.5 | unmt/comet-qe-22 |
 | FLORES precision@1 | > 0.95 (sanity) | vecalign + flores devtest |
-| Round-trip chrF | > 0.40 | sacrebleu + Ollama |
+| Round-trip chrF | > 0.40 | sacrebleu + vLLM |
 | Hold-out MT BLEU | > 15 (skip nếu < 5000 pairs) | transformers + sacrebleu |
-| Krippendorff α (LLM) | ≥ 0.5 | krippendorff + Ollama |
+| Krippendorff α (LLM) | ≥ 0.5 (chỉ khi ≥ 2 model) | krippendorff + vLLM |
 | NER-Bridge coverage | > 50% | custom matcher |
 
 **Nếu bất kỳ metric nào trượt target**, xem `docs/05_troubleshooting.md`

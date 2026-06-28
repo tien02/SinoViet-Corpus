@@ -15,7 +15,7 @@ Hướng dẫn cài đặt chi tiết cho HVB pipeline.
 |------|---------|---------|
 | Python | 3.11 (3.10-3.12 OK) | Runtime |
 | uv | 0.10+ | Package manager |
-| Docker | 24+ | Chạy Ollama |
+| Docker | 24+ | Chạy vLLM |
 | NVIDIA Driver | 535+ | CUDA 12.1 |
 | poppler-utils | any | pdf2image |
 | git | any | Clone vecalign |
@@ -46,7 +46,7 @@ nvidia-smi | grep "CUDA Version"
 
 Nếu CUDA < 12.1, update driver hoặc sửa `pyproject.toml` sang `cu118` index.
 
-### 4. Docker + Ollama
+### 4. Docker + vLLM
 
 ```bash
 curl -fsSL https://get.docker.com | sh
@@ -63,8 +63,8 @@ cd /home/tienda/WorkSpace/HCMUS/NLP
 # Chạy script setup (tự động):
 # - uv venv + uv sync
 # - git clone vecalign
-# - docker run ollama
-# - ollama pull qwen2.5:7b seallm:7b
+# - docker run vllm (image vllm/vllm-openai:latest)
+# - vLLM tự download weights Qwen/Qwen2.5-7B-Instruct lần đầu
 ./scripts/setup_uv.sh
 ```
 
@@ -79,9 +79,9 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.device_coun
 # 2. PaddleOCR
 python -c "from paddleocr import PaddleOCR; print('OK')"
 
-# 3. Ollama
-curl http://localhost:11434/api/tags | jq '.models[].name'
-# Expected: ["qwen2.5:7b", "seallm:7b"]
+# 3. vLLM
+curl http://localhost:8000/v1/models | jq '.data[].id'
+# Expected: ["Qwen/Qwen2.5-7B-Instruct"]
 
 # 4. Vecalign
 ls external/vecalign/vecalign.py
@@ -100,12 +100,18 @@ uv run python -m src.utils.config
 
 Sửa `src/utils/config.py`:
 ```python
-LLM_MODELS = ["qwen2.5:14b", "seallm:7b"]  # 14B cần >= 16GB VRAM
+VLLM_MODEL = "Qwen/Qwen2.5-14B-Instruct"  # 14B cần >= 24GB VRAM
+LLM_MODELS = [VLLM_MODEL]  # backward-compat alias
 ```
 
-Pull thêm model:
+Khởi động lại container vLLM với model mới:
 ```bash
-docker exec ollama ollama pull qwen2.5:14b
+docker rm -f vllm
+docker run -d --name vllm --gpus=all -p 8000:8000 \
+  -v vllm:/root/.cache/huggingface \
+  vllm/vllm-openai:latest \
+  --model Qwen/Qwen2.5-14B-Instruct \
+  --gpu-memory-utilization 0.9 --max-model-len 4096 --dtype half
 ```
 
 ### Đổi batch size (VRAM tight)
@@ -117,9 +123,9 @@ MT_BATCH = 8       # mặc định 16
 PADDLE_BATCH = 4   # mặc định 8
 ```
 
-### Giới hạn GPU cho Ollama
+### Giới hạn GPU cho vLLM
 
-Setup mặc định dùng tất cả GPU. Giới hạn: edit `scripts/setup_uv.sh` flag `--gpus` theo nhu cầu.
+Setup mặc định: `--gpu-memory-utilization 0.9` (chiếm 90% VRAM). Giới hạn thêm: edit `scripts/setup_uv.sh` flag `--gpu-memory-utilization` hoặc `--max-model-len` theo nhu cầu.
 
 ## Troubleshooting setup
 
@@ -131,13 +137,13 @@ error: couldn't find paddlepaddle-gpu in https://www.paddlepaddle.org.cn/package
 
 **Fix**: Check CUDA version của driver. Sửa index URL trong `pyproject.toml` sang version match (cu118 / cu120 / cu121).
 
-### Ollama: connection refused
+### vLLM: connection refused
 
 ```bash
-docker ps | grep ollama
-docker start ollama
-sleep 5
-curl http://localhost:11434/api/tags
+docker ps | grep vllm
+docker start vllm
+sleep 10
+curl http://localhost:8000/v1/models
 ```
 
 ### Docker: could not select device driver

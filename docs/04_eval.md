@@ -60,7 +60,7 @@ Không dùng human annotation (user preference). Thay vào đó, cross-validate 
 
 **Pipeline:**
 1. Sample 500 cặp stratified by LaBSE score (150 low / 200 mid / 150 high)
-2. Với mỗi cặp: dùng LLM (Qwen2.5:7b) dịch Viet → Han
+2. Với mỗi cặp: dùng LLM (Qwen/Qwen2.5-7B-Instruct) dịch Viet → Han
 3. So sánh Han original vs Han round-trip
 
 **Metrics:**
@@ -108,13 +108,13 @@ Không dùng human annotation (user preference). Thay vào đó, cross-validate 
 
 **Pipeline:**
 1. Sample 500 cặp stratified by LaBSE score
-2. Mỗi LLM (`qwen2.5:7b`, `seallm:7b`) chấm 5 tiêu chí 1-5:
+2. Mỗi LLM trong `LLM_MODELS` (mặc định 1 model `Qwen/Qwen2.5-7B-Instruct`) chấm 5 tiêu chí 1-5:
    - **Adequacy**: đầy đủ ý
    - **Fluency**: thông suất ngữ pháp
    - **Alignment**: cặp đúng
    - **Fidelity**: trung thực nguyên bản
    - **Terminology**: thuật ngữ lịch sử
-3. Compute **Krippendorff α** (ordinal) cho mỗi criterion qua 2 LLMs
+3. Compute **Krippendorff α** (ordinal) cho mỗi criterion — chỉ khi `LLM_MODELS` có ≥ 2 model. Mặc định 1 model → α undefined, report mean-only. Để bật α: thêm model thứ 2 vào `LLM_MODELS` và chạy thêm container vLLM
 4. Mean scores per model
 
 **Prompt template:** JSON output mode (`format: "json"`), temperature 0.1.
@@ -194,7 +194,7 @@ Tạo báo cáo tổng hợp `data/final/eval/REPORT.md` (script mẫu ngắn):
   jq -r 'if .skipped then "- SKIPPED: \(.reason)" else "- BLEU: \(.bleu)\n- chrF: \(.chrf)" end' data/final/eval/holdout_mt.json
   echo ""
   echo "## LLM Ensemble"
-  jq -r '.summary | "- Adequacy (qwen): \(.mean_per_model["qwen2.5:7b"].adequacy)"' data/final/eval/llm_ensemble_judge.json
+  jq -r '.summary | "- Adequacy (qwen): \(.mean_per_model["Qwen/Qwen2.5-7B-Instruct"].adequacy)"' data/final/eval/llm_ensemble_judge.json
 } > data/final/eval/REPORT.md
 cat data/final/eval/REPORT.md
 ```

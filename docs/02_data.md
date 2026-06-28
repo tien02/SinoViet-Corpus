@@ -194,14 +194,14 @@ Hoặc `{"skipped": true, "reason": "insufficient pairs"}` nếu < 5000.
 {
   "summary": {
     "n_sample": 500,
-    "models": ["qwen2.5:7b", "seallm:7b"],
+    "models": ["Qwen/Qwen2.5-7B-Instruct"],
     "krippendorff_alpha": {
-      "adequacy": 0.52, "fluency": 0.48, "alignment": 0.55,
-      "fidelity": 0.50, "terminology": 0.61
+      "adequacy": null, "fluency": null, "alignment": null,
+      "fidelity": null, "terminology": null
     },
+    "krippendorff_alpha_note": "null khi < 2 model trong LLM_MODELS; can >= 2 model de tinh alpha",
     "mean_per_model": {
-      "qwen2.5:7b": {"adequacy": 3.8, "fluency": 3.9, "alignment": 4.1, "fidelity": 3.7, "terminology": 3.5},
-      "seallm:7b": {"adequacy": 3.6, "fluency": 3.7, "alignment": 3.9, "fidelity": 3.5, "terminology": 3.4}
+      "Qwen/Qwen2.5-7B-Instruct": {"adequacy": 3.8, "fluency": 3.9, "alignment": 4.1, "fidelity": 3.7, "terminology": 3.5}
     }
   }
 }

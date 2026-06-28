@@ -39,16 +39,23 @@ Stages embed/align/ner/eval cũng cần re-run nếu muốn include new data.
 
 ## Đổi models
 
-### Đổi LLM (Ollama)
+### Đổi LLM (vLLM)
 
-**Bước 1:** Pull model mới:
+**Bước 1:** Khởi động lại container vLLM với model mới (vLLM tự download weights):
 ```bash
-docker exec ollama ollama pull qwen2.5:14b
+docker rm -f vllm
+docker run -d --name vllm --gpus=all -p 8000:8000 \
+  -v vllm:/root/.cache/huggingface \
+  vllm/vllm-openai:latest \
+  --model Qwen/Qwen2.5-14B-Instruct \
+  --gpu-memory-utilization 0.9 --max-model-len 4096 --dtype half
+# 14B cần >= 24GB VRAM; đợi log "Application startup complete"
 ```
 
 **Bước 2:** Update `src/utils/config.py`:
 ```python
-LLM_MODELS = ["qwen2.5:14b", "seallm:7b"]
+VLLM_MODEL = "Qwen/Qwen2.5-14B-Instruct"  # 14B cần >= 24GB VRAM
+LLM_MODELS = [VLLM_MODEL]  # backward-compat alias
 ```
 
 **Bước 3:** Re-run Stage 2b + Stage 7e:

@@ -20,7 +20,7 @@ Build sentence-aligned Hán-Việt parallel corpus from **Đại Nam Thực Lụ
 - **Package manager:** `uv` (NOT pip / conda). `pyproject.toml` is source of truth.
 - **Python:** 3.11+.
 - **GPU:** CUDA 12.1 wheels for PyTorch + PaddlePaddle (custom uv indexes in `pyproject.toml`).
-- **LLM:** Ollama Docker container (`ollama/ollama:latest`) on `http://localhost:11434`. Models: `qwen2.5:7b`, `seallm:7b`.
+- **LLM:** vLLM Docker container (`vllm/vllm-openai:latest`) on `http://localhost:8000/v1`. Model: `Qwen/Qwen2.5-7B-Instruct` (OpenAI-compatible API; PagedAttention 5-10x faster than Ollama). LLM post-correction optional — set `HVB_SKIP_LLM_CORRECT=1` to bypass.
 - **Vecalign:** git clone at `external/vecalign/` (not on PyPI).
 
 ## Run commands
@@ -53,8 +53,8 @@ rm data/interim/.checkpoint/<stage_name>
    - FLORES-200 sanity check (NOT domain match — pipeline correctness only)
    - Round-trip consistency (Viet → Han via LLM, compare to original)
    - Internal hold-out MT (80/20 split, fine-tune MarianMT, BLEU on hold-out)
-   - LLM ensemble judge (Qwen + SeaLLM, Krippendorff α)
-2. **Local LLM via Ollama Docker**, never call cloud APIs (GPT-4o, Claude API).
+   - LLM ensemble judge (Qwen2.5-7B-Instruct; α undefined với 1 model — report mean-only, α needs ≥ 2 in `LLM_MODELS`)
+2. **Local LLM via vLLM Docker** (OpenAI-compatible, never cloud APIs like GPT-4o / Claude API).
 3. **uv for environment**, never pip install / conda.
 4. **Vecalign + LaBSE** for alignment — no other aligner without explicit approval.
 5. **7B models, not 14B** — VRAM constraint (2x RTX 3060 12GB).
@@ -88,7 +88,7 @@ Each stage reads previous stage's output from `data/interim/` or `data/aligned/`
 5. **Round-trip Viet → Han LLM** is weaker than Han → Viet; expect chrF 0.4 not 0.7.
 6. **Hold-out MT auto-skips if < 5000 pairs** — check `HOLDOUT_MIN_PAIRS` in config.
 7. **Underthesea sent_tokenize** can crash on empty / whitespace input — wrapped in try/except with regex fallback in `split_vi.py`.
-8. **Ollama models lost after Docker restart** — re-run `docker exec ollama ollama pull qwen2.5:7b seallm:7b`.
+8. **vLLM model weights cached** in docker volume `vllm` (`/root/.cache/huggingface`). Container auto-restarts via `--restart unless-stopped`. First-run downloads ~5GB weights (10-20 min).
 
 ## File structure
 
@@ -142,7 +142,7 @@ Each stage reads previous stage's output from `data/interim/` or `data/aligned/`
 
 - `uv run python -c "from src.utils import config; print(config.HAN_TXT, config.VI_PDFS)"` — config importable
 - `uv run python -c "import paddleocr, sentence_transformers, hanlp, underthesea; print('OK')"` — deps OK
-- `docker ps | grep ollama` — LLM serving
+- `docker ps | grep vllm` — LLM serving; `curl http://localhost:8000/v1/models` — health-check
 - `ls data/interim/.checkpoint/` — see which stages have completed
 
 ## Eval targets (after full pipeline)
