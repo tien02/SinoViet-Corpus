@@ -5,16 +5,18 @@
 #   1. Pre-flight checks (warn only, no sudo install)
 #   2. uv venv + uv sync
 #   3. Clone vecalign if missing
-#   4. Start vLLM docker container on :8001 (host) → container :8000
-#   5. Health-check endpoint
+#   4. (OPTIONAL) Start vLLM docker container — requires --with-vllm flag
+#   5. Health-check endpoint (if vLLM started)
 #
 # Usage:
-#   ./scripts/setup.sh           # full
-#   ./scripts/setup.sh --check   # pre-flight only
+#   ./scripts/setup.sh                 # core setup (NO vLLM docker)
+#   ./scripts/setup.sh --with-vllm     # core + start vLLM docker container
+#   ./scripts/setup.sh --check         # pre-flight only
 #
 # Env overrides:
-#   VLLM_MODEL   (default Qwen/Qwen2.5-7B-Instruct)
-#   VLLM_PORT    (default 8001 — host port; container internal stays 8000)
+#   HVB_WITH_VLLM=1   (same as --with-vllm)
+#   VLLM_MODEL        (default Qwen/Qwen2.5-7B-Instruct)
+#   VLLM_PORT         (default 8001 — host port; container internal stays 8000)
 
 set -euo pipefail
 
@@ -22,7 +24,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 CHECK_ONLY=0
-[ "${1:-}" = "--check" ] && CHECK_ONLY=1
+WITH_VLLM="${HVB_WITH_VLLM:-0}"
+for arg in "$@"; do
+  case "$arg" in
+    --check) CHECK_ONLY=1 ;;
+    --with-vllm) WITH_VLLM=1 ;;
+    *) warn "unknown arg: $arg" ;;
+  esac
+done
 
 VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}"
 VLLM_PORT="${VLLM_PORT:-8001}"
@@ -64,44 +73,64 @@ else
   ok "vecalign already cloned"
 fi
 
-# ---------- 4. vLLM docker ----------
+# ---------- 4. vLLM docker (OPTIONAL — needs --with-vllm) ----------
 # OpenAI-compatible API on host :${VLLM_PORT} → container :8000 with PagedAttention.
-# One model per container. Weights download on first start (~5GB).
-log "vLLM docker ($VLLM_MODEL on :$VLLM_PORT)"
-if docker ps --format '{{.Names}}' | grep -q '^vllm$'; then
-  ok "vllm container already running"
-elif docker ps -a --format '{{.Names}}' | grep -q '^vllm$'; then
-  docker start vllm
-  ok "vllm container started (was stopped)"
-else
-  docker run -d --name vllm \
-    --gpus=all \
-    -p "${VLLM_PORT}:8000" \
-    -v vllm:/root/.cache/huggingface \
-    --restart unless-stopped \
-    vllm/vllm-openai:latest \
-    --model "$VLLM_MODEL" \
-    --gpu-memory-utilization 0.9 \
-    --max-model-len 4096 \
-    --dtype half
-  ok "vllm container created + started (first-run weight download ~10-20 min)"
-fi
-
-# ---------- 5. Health-check vLLM endpoint ----------
-log "vLLM health check (curl /v1/models)"
-READY=0
-for i in $(seq 1 40); do
-  if curl -fsS "http://localhost:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
-    ok "vLLM ready at http://localhost:${VLLM_PORT}/v1"
-    READY=1
-    break
+# LLM post-correction in Stage 2b is OFF by default. Enable via HVB_RUN_LLM_CORRECT=1.
+if [ "$WITH_VLLM" = "1" ]; then
+  log "vLLM docker ($VLLM_MODEL on :$VLLM_PORT)"
+  if docker ps --format '{{.Names}}' | grep -q '^vllm$'; then
+    ok "vllm container already running"
+  elif docker ps -a --format '{{.Names}}' | grep -q '^vllm$'; then
+    docker start vllm
+    ok "vllm container started (was stopped)"
+  else
+    docker run -d --name vllm \
+      --gpus=all \
+      -p "${VLLM_PORT}:8000" \
+      -v vllm:/root/.cache/huggingface \
+      --restart unless-stopped \
+      vllm/vllm-openai:latest \
+      --model "$VLLM_MODEL" \
+      --gpu-memory-utilization 0.9 \
+      --max-model-len 4096 \
+      --dtype half
+    ok "vllm container created + started (first-run weight download ~10-20 min)"
   fi
-  warn "vLLM not ready (attempt $i/40), waiting 30s..."
-  sleep 30
-done
-if [ "$READY" = "0" ]; then
-  warn "vLLM still loading after 20 min — check: docker logs vllm --tail 100"
-  warn "Look for: 'Application startup complete'."
+
+  # ---------- 5. Health-check vLLM endpoint ----------
+  log "vLLM health check (curl /v1/models)"
+  READY=0
+  for i in $(seq 1 40); do
+    if curl -fsS "http://localhost:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
+      ok "vLLM ready at http://localhost:${VLLM_PORT}/v1"
+      READY=1
+      break
+    fi
+    warn "vLLM not ready (attempt $i/40), waiting 30s..."
+    sleep 30
+  done
+  if [ "$READY" = "0" ]; then
+    warn "vLLM still loading after 20 min — check: docker logs vllm --tail 100"
+    warn "Look for: 'Application startup complete'."
+  fi
+else
+  log "vLLM docker: SKIPPED (optional)"
+  cat <<EOF
+  Pipeline runs fine without vLLM — Stage 2b LLM post-correction is OFF by default.
+  Raw PaddleOCR output is used as-is for split/align/eval.
+
+  To enable vLLM later:
+    ./scripts/setup.sh --with-vllm
+
+  Or start container manually:
+    docker run -d --name vllm --gpus=all -p ${VLLM_PORT}:8000 \\
+      -v vllm:/root/.cache/huggingface --restart unless-stopped \\
+      vllm/vllm-openai:latest --model ${VLLM_MODEL} \\
+      --gpu-memory-utilization 0.9 --max-model-len 4096 --dtype half
+
+  Then enable LLM correct at OCR stage:
+    HVB_RUN_LLM_CORRECT=1 ./scripts/run_pipeline.sh ocr
+EOF
 fi
 
 # ---------- DONE ----------
