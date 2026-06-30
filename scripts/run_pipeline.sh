@@ -8,6 +8,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Auto-load Unlimited-OCR endpoints written by start_unlimited_ocr.sh.
+# Lets `ocr` and `all` stages run seamlessly after container startup
+# without manual `export UNLIMITED_OCR_BASE_URLS=…`.
+if [ -f "$ROOT/.unlimited_ocr.env" ]; then
+    # shellcheck disable=SC1091
+    source "$ROOT/.unlimited_ocr.env"
+fi
+
 STAGE="${1:-all}"
 
 # Subset-aware checkpoint dir: matches INTERIM path used by Python stages.
@@ -50,6 +58,42 @@ paddle_ocr_parallel() {
     uv run python -m src.02_ocr.paddle_ocr --combine
 }
 
+# Run Baidu Unlimited-OCR via vLLM. Multi-GPU: one container per GPU, requests
+# round-robin across endpoints. Higher quality than PaddleOCR on Vietnamese
+# historical scans. Endpoints come from UNLIMITED_OCR_BASE_URLS (comma-sep),
+# UNLIMITED_OCR_BASE_URL, or default http://localhost:8002/v1.
+unlimited_ocr_run() {
+    local urls="${UNLIMITED_OCR_BASE_URLS:-${UNLIMITED_OCR_BASE_URL:-http://localhost:8002/v1}}"
+    IFS=',' read -ra endpoints <<< "$urls"
+    local fail=0
+    for u in "${endpoints[@]}"; do
+        u="${u// /}"  # strip whitespace
+        if ! curl -fsS "$u/models" >/dev/null 2>&1; then
+            echo "ERROR: Unlimited-OCR endpoint not reachable: $u"
+            fail=1
+        else
+            echo "  ok: $u"
+        fi
+    done
+    if [ "$fail" -ne 0 ]; then
+        echo
+        echo "Start containers with:  ./scripts/start_unlimited_ocr.sh"
+        echo "  (defaults to HVB_OCR_GPUS=0,1 — one container per GPU)"
+        return 1
+    fi
+    uv run python -m src.02_ocr.unlimited_ocr
+}
+
+# OCR backend selector: HVB_OCR_BACKEND=unlimited (default) | paddle
+OCR_BACKEND="${HVB_OCR_BACKEND:-unlimited}"
+run_ocr_backend() {
+    case "$OCR_BACKEND" in
+        unlimited) unlimited_ocr_run ;;
+        paddle)    paddle_ocr_parallel ;;
+        *) echo "Unknown HVB_OCR_BACKEND=$OCR_BACKEND (use: unlimited|paddle)"; return 1 ;;
+    esac
+}
+
 run() {
     local name="$1"; shift
     local cmd="$1"; shift
@@ -68,12 +112,12 @@ case "$STAGE" in
         run pdf_to_images "uv run python -m src.01_prep.pdf_to_images"
         ;;
     ocr)
-        run paddle_ocr paddle_ocr_parallel
+        run ocr run_ocr_backend
         if [ "$RUN_LLM_CORRECT" = "1" ]; then
             run llm_correct "uv run python -m src.02_ocr.llm_correct"
         else
             echo "[skip] llm_correct (set HVB_RUN_LLM_CORRECT=1 to enable vLLM post-fix)"
-            run llm_correct_skip "HVB_SKIP_LLM_CORRECT=1 uv run python -m src.02_ocr.llm_correct"
+            HVB_SKIP_LLM_CORRECT=1 run llm_correct_skip "uv run python -m src.02_ocr.llm_correct"
         fi
         ;;
     split)
@@ -92,12 +136,12 @@ case "$STAGE" in
     all)
         run normalize_han "uv run python -m src.01_prep.normalize_han"
         run pdf_to_images "uv run python -m src.01_prep.pdf_to_images"
-        run paddle_ocr paddle_ocr_parallel
+        run ocr run_ocr_backend
         if [ "$RUN_LLM_CORRECT" = "1" ]; then
             run llm_correct "uv run python -m src.02_ocr.llm_correct"
         else
             echo "[skip] llm_correct (set HVB_RUN_LLM_CORRECT=1 to enable vLLM post-fix)"
-            run llm_correct_skip "HVB_SKIP_LLM_CORRECT=1 uv run python -m src.02_ocr.llm_correct"
+            HVB_SKIP_LLM_CORRECT=1 run llm_correct_skip "uv run python -m src.02_ocr.llm_correct"
         fi
         run split_han "uv run python -m src.03_split.split_han"
         run split_vi "uv run python -m src.03_split.split_vi"

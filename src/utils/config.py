@@ -89,6 +89,33 @@ SKIP_LLM_CORRECT = bool(os.environ.get("HVB_SKIP_LLM_CORRECT", ""))
 
 PADDLE_BATCH = 8
 
+# Unlimited-OCR (Baidu) via vLLM — replacement for PaddleOCR.
+# Served on separate port (8002) so Qwen LLM-correct container (8001) can coexist.
+# Recipe: https://recipes.vllm.ai/baidu/Unlimited-OCR
+#
+# Multi-GPU speedup: start one vLLM container per GPU (see
+# scripts/start_unlimited_ocr.sh) and list endpoints in UNLIMITED_OCR_BASE_URLS
+# (comma-separated). The OCR stage round-robins requests across endpoints.
+UNLIMITED_OCR_MODEL = os.environ.get("UNLIMITED_OCR_MODEL", "baidu/Unlimited-OCR")
+UNLIMITED_OCR_BASE_URL = os.environ.get(
+    "UNLIMITED_OCR_BASE_URL", "http://localhost:8002/v1"
+)
+# Optional: comma-separated list of endpoints for round-robin across containers.
+# If set, overrides UNLIMITED_OCR_BASE_URL.
+UNLIMITED_OCR_BASE_URLS = [
+    u.strip()
+    for u in os.environ.get("UNLIMITED_OCR_BASE_URLS", "").split(",")
+    if u.strip()
+]
+UNLIMITED_OCR_API_KEY = os.environ.get("UNLIMITED_OCR_API_KEY", "EMPTY")
+UNLIMITED_OCR_TIMEOUT = int(os.environ.get("UNLIMITED_OCR_TIMEOUT", "3600"))
+UNLIMITED_OCR_MAX_TOKENS = int(os.environ.get("UNLIMITED_OCR_MAX_TOKENS", "4096"))
+UNLIMITED_OCR_NGRAM_SIZE = int(os.environ.get("UNLIMITED_OCR_NGRAM_SIZE", "35"))
+UNLIMITED_OCR_WINDOW_SIZE = int(os.environ.get("UNLIMITED_OCR_WINDOW_SIZE", "128"))
+# Per-endpoint concurrency. With 2 endpoints on 2 GPUs, effective parallelism = 2*BATCH.
+# Default 16 saturates one RTX 3060 with max-model-len 8192.
+UNLIMITED_OCR_BATCH = int(os.environ.get("UNLIMITED_OCR_BATCH", "16"))
+
 
 def ensure_dirs() -> None:
     for d in [

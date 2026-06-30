@@ -13,6 +13,7 @@ Hướng dẫn chi tiết cho pipeline Hán-Việt Đại Nam Thực Lục.
 | [04_eval.md](04_eval.md) | Methodology đánh giá 5 trụ, metric definitions, targets |
 | [05_troubleshooting.md](05_troubleshooting.md) | Lỗi thường gặp + cách fix |
 | [06_extend.md](06_extend.md) | Mở rộng: thêm PDF, đổi LLM, custom eval rubric |
+| [07_unlimited_ocr.md](07_unlimited_ocr.md) | Stage 2 — Unlimited-OCR (vLLM, 2-GPU): tại sao chọn, setup, run seamless với align |
 
 ## Đọc theo thứ tự
 
