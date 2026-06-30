@@ -14,6 +14,7 @@ Hướng dẫn chi tiết cho pipeline Hán-Việt Đại Nam Thực Lục.
 | [05_troubleshooting.md](05_troubleshooting.md) | Lỗi thường gặp + cách fix |
 | [06_extend.md](06_extend.md) | Mở rộng: thêm PDF, đổi LLM, custom eval rubric |
 | [07_unlimited_ocr.md](07_unlimited_ocr.md) | Stage 2 — Unlimited-OCR (vLLM, 2-GPU): tại sao chọn, setup, run seamless với align |
+| [08_results.md](08_results.md) | Số liệu thực tế: Hán items, PaddleOCR vs Unlimited-OCR (pages, chars, sentences, aligned pairs, deliverable) |
 
 ## Đọc theo thứ tự
 
