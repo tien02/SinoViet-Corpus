@@ -38,8 +38,16 @@ def normalize(text: str) -> str:
     text = WIKI_HEADER_RE.sub("", text)
     text = FULLWIDTH_RE.sub(_fullwidth_to_half, text)
     text = MULTI_NEWLINE_RE.sub("\n\n", text)
-    lines = [ln.strip() for ln in text.splitlines()]
-    text = "\n".join(ln for ln in lines if ln)
+    # Preserve paragraph breaks (\n\n) — coarsest sentence boundary when
+    # raw text lacks terminal punctuation (imperial edicts, decrees).
+    # Intra-paragraph whitespace-only lines collapse; kept lines rejoined
+    # with single \n.
+    paragraphs = re.split(r"\n{2,}", text)
+    paragraphs = [
+        "\n".join(ln.strip() for ln in p.splitlines() if ln.strip())
+        for p in paragraphs
+    ]
+    text = "\n\n".join(p for p in paragraphs if p)
     return text.strip() + "\n"
 
 

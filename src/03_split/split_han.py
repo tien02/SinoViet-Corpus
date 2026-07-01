@@ -13,9 +13,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.config import HAN_CLEAN, HAN_SENT  # noqa: E402
 
-ZH_TERM_RE = re.compile(r"([。！？；])")
+ZH_TERM_RE = re.compile(r"([。！？；!?;])")
+TERM_CHARS = "。！？；!?;"
 ANNOT_OPEN = "〈「『（"
 ANNOT_CLOSE = "〉」』）"
+
+# Fallback for imperial-edict / decree blocks with ZERO terminal punctuation
+# (378 such paragraphs in the corpus, median 8 568 chars). Splits the block
+# on `\n` and greedily re-merges consecutive lines into sentence-sized
+# chunks — line-by-line over-fragments (Vecalign's ratio to Vi side blows
+# up), whole-block atomically forces oversized drops at export.
+MAX_LEN = 2000
+CHUNK_TARGET = 200
 
 
 def split_classical(text: str) -> list[str]:
@@ -63,8 +72,43 @@ def split_classical(text: str) -> list[str]:
             continue
         for k, ann in enumerate(protected):
             s = s.replace(f"__ANN{k}__", ann)
-        sentences.append(s)
+        # Only fall back to newline split when regex terminators found
+        # nothing in this segment — protects zero-terminator edict blocks
+        # while leaving normal punctuated prose (and annotation-heavy long
+        # sentences) atomic.
+        if (
+            len(s) > MAX_LEN
+            and "\n" in s
+            and not any(c in s for c in TERM_CHARS)
+        ):
+            sentences.extend(_greedy_merge_lines(s))
+        else:
+            sentences.append(s)
     return sentences
+
+
+def _greedy_merge_lines(text: str) -> list[str]:
+    """Group consecutive non-empty lines into ~CHUNK_TARGET-char chunks.
+
+    Emits when running buffer exceeds target OR at end. Preserves original
+    line order — critical for monotonic alignment.
+    """
+    chunks: list[str] = []
+    buf: list[str] = []
+    buf_len = 0
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        buf.append(line)
+        buf_len += len(line)
+        if buf_len >= CHUNK_TARGET:
+            chunks.append("".join(buf))
+            buf = []
+            buf_len = 0
+    if buf:
+        chunks.append("".join(buf))
+    return chunks
 
 
 def main() -> None:
