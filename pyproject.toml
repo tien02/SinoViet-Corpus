@@ -26,6 +26,9 @@ dependencies = [
     "rich>=13",
     "cython>=3.2.6",
     "openpyxl>=3.1.5",
+    "faiss-cpu>=1.7",
+    "numba>=0.60",
+    "sentence-splitter>=1.4",
 ]
 
 [project.optional-dependencies]

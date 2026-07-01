@@ -70,10 +70,19 @@ PADDLE_LANG = "vi"
 PADDLE_USE_GPU = CUDA_VISIBLE > 0
 OCR_DPI = 300
 
-LABSE_MODEL = "sentence-transformers/LaBSE"
-EMBED_BATCH = 64
+LABSE_MODEL = "sentence-transformers/LaBSE"  # legacy alias
+# Sentence-embedding backbone. BGE-M3 (BAAI, 2024) — 568M params, 1024-dim,
+# stronger CJK + low-resource than LaBSE. Drop-in via sentence-transformers.
+# Override with HVB_EMBED_MODEL (e.g. sentence-transformers/LaBSE).
+EMBED_MODEL = os.environ.get("HVB_EMBED_MODEL", "BAAI/bge-m3")
+EMBED_MAX_SEQ = int(os.environ.get("HVB_EMBED_MAX_SEQ", "512"))
+EMBED_BATCH = int(os.environ.get("HVB_EMBED_BATCH", "32"))
 
 VECALIGN_REPO = ROOT / "external" / "vecalign"
+BERTALIGN_REPO = ROOT / "external" / "bertalign"
+# Aligner backend: 'vecalign' (default, monotonic DP) | 'bertalign' (two-pass,
+# handles non-monotonic drift).
+ALIGNER = os.environ.get("HVB_ALIGNER", "vecalign")
 ALIGN_MIN_SCORE = float(os.environ.get("ALIGN_MIN_SCORE", "0.5"))
 
 # LLM backend for optional OCR post-correction (Stage 2b): vLLM, OpenAI-compatible.

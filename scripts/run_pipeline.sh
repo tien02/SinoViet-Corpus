@@ -94,6 +94,14 @@ run_ocr_backend() {
     esac
 }
 
+# Aligner selector: HVB_ALIGNER=vecalign (default) | bertalign
+ALIGNER="${HVB_ALIGNER:-vecalign}"
+case "$ALIGNER" in
+    vecalign)  ALIGN_CMD="uv run python -m src.05_align.vecalign_runner" ;;
+    bertalign) ALIGN_CMD="uv run python -m src.05_align.bertalign_runner" ;;
+    *) echo "Unknown HVB_ALIGNER=$ALIGNER (use: vecalign|bertalign)"; exit 1 ;;
+esac
+
 run() {
     local name="$1"; shift
     local cmd="$1"; shift
@@ -128,7 +136,7 @@ case "$STAGE" in
         run labse_embed "uv run python -m src.04_embed.labse_embed"
         ;;
     align)
-        run vecalign "uv run python -m src.05_align.vecalign_runner"
+        run vecalign "$ALIGN_CMD"
         ;;
     export)
         run export_deliverable "uv run python -m src.07_export.export_deliverable"
@@ -146,7 +154,7 @@ case "$STAGE" in
         run split_han "uv run python -m src.03_split.split_han"
         run split_vi "uv run python -m src.03_split.split_vi"
         run labse_embed "uv run python -m src.04_embed.labse_embed"
-        run vecalign "uv run python -m src.05_align.vecalign_runner"
+        run vecalign "$ALIGN_CMD"
         run export_deliverable "uv run python -m src.07_export.export_deliverable"
         ;;
     *)
