@@ -18,19 +18,22 @@ from src.utils.config import (  # noqa: E402
 )
 
 
+MIN_SENT_LEN = 8
+
+
 def underthesea_split(text: str) -> list[str]:
     try:
         from underthesea import sent_tokenize
         return sent_tokenize(text)
     except Exception:
-        return re.split(r"(?<=[\.\!\?\:\n])\s+", text)
+        return re.split(r"(?<=[\.\!\?])\s+", text)
 
 
 def split_vi_paragraph(para: str) -> list[str]:
     para = para.strip()
     if not para:
         return []
-    chunks = re.split(r"(?<=[。；！？])\s+", para)
+    chunks = re.split(r"(?<=[。！？])\s+", para)
     sentences = []
     for ch in chunks:
         ch = ch.strip()
@@ -38,9 +41,30 @@ def split_vi_paragraph(para: str) -> list[str]:
             continue
         for s in underthesea_split(ch):
             s = s.strip()
-            if len(s) >= 2:
+            if len(s) >= MIN_SENT_LEN:
                 sentences.append(s)
     return sentences
+
+
+def rejoin_blocks(text: str) -> str:
+    """Re-stitch PaddleOCR-VL block breaks when next block starts lowercase
+    and previous doesn't end in terminal punct — mid-sentence cuts from
+    block boundaries. Keeps real paragraph breaks."""
+    paras = re.split(r"\n{2,}", text)
+    merged: list[str] = []
+    for para in paras:
+        para = para.strip()
+        if not para:
+            continue
+        if merged:
+            prev = merged[-1]
+            last_char = prev[-1] if prev else ""
+            first_char = para[0]
+            if last_char not in '.!?":”)…' and first_char.islower():
+                merged[-1] = prev + " " + para
+                continue
+        merged.append(para)
+    return "\n\n".join(merged)
 
 
 def main() -> None:
@@ -73,6 +97,7 @@ def main() -> None:
             except ValueError:
                 tap, page = stem, -1
             text = pf.read_text(encoding="utf-8")
+            text = rejoin_blocks(text)
             paras = re.split(r"\n{2,}", text)
             for para in paras:
                 for s in split_vi_paragraph(para):

@@ -16,6 +16,7 @@ Hướng dẫn chi tiết cho pipeline Hán-Việt Đại Nam Thực Lục.
 | [07_unlimited_ocr.md](07_unlimited_ocr.md) | Stage 2 — Unlimited-OCR (vLLM, 2-GPU): tại sao chọn, setup, run seamless với align |
 | [08_results.md](08_results.md) | Số liệu thực tế: Hán items, PaddleOCR vs Unlimited-OCR vs PaddleOCR-VL-1.6 (pages, chars, sentences, aligned pairs, deliverable) |
 | [09_han_pipeline.md](09_han_pipeline.md) | Chi tiết Hán normalize + split: bug full-width→ASCII, paragraph preservation, zero-terminator edict fallback, measured impact (34K → 52K aligned pairs) |
+| [10_fail_cases.md](10_fail_cases.md) | Fail cases PaddleOCR-VL-1.6 + full-Hán alignment: 2 208 Hán uncovered, decoder collapse, repetition loop, back-matter asymmetry, cost ranking, fast wins |
 
 ## Đọc theo thứ tự
 

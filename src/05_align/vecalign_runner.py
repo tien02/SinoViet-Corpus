@@ -19,10 +19,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.config import (  # noqa: E402
-    ALIGN_MIN_SCORE,
+    ALIGN_MAX_DIST,
     HAN_EMBEDS,
     HAN_SENT,
     PAIRS_JSONL,
+    PAIRS_REVIEW_JSONL,
     VECALIGN_REPO,
     VI_EMBEDS,
     VI_SENT,
@@ -145,12 +146,14 @@ def main() -> None:
     raw_pairs = parse_vecalign_output(out_file)
     PAIRS_JSONL.parent.mkdir(parents=True, exist_ok=True)
     kept = 0
-    with PAIRS_JSONL.open("w", encoding="utf-8") as fout:
+    review = 0
+    with PAIRS_JSONL.open("w", encoding="utf-8") as fkeep, \
+            PAIRS_REVIEW_JSONL.open("w", encoding="utf-8") as freview:
         for p in raw_pairs:
-            if p["score"] < ALIGN_MIN_SCORE:
-                continue
             src_lines = expand_indices(p["src_idx_raw"])
             tgt_lines = expand_indices(p["tgt_idx_raw"])
+            if not src_lines or not tgt_lines:
+                continue  # deletion / insertion — no bilingual info
             src_text = " ".join(
                 src_unique[i] for i in src_lines if 0 <= i < len(src_unique)
             )
@@ -160,27 +163,30 @@ def main() -> None:
             # Map deduped line idx back to original jsonl idx.
             src_orig = [src_kept[i] for i in src_lines if 0 <= i < len(src_kept)]
             tgt_orig = [tgt_kept[i] for i in tgt_lines if 0 <= i < len(tgt_kept)]
-            fout.write(
-                json.dumps(
-                    {
-                        "src_idx": src_orig,
-                        "tgt_idx": tgt_orig,
-                        "src": src_text,
-                        "tgt": tgt_text,
-                        "score": p["score"],
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-            kept += 1
+            row = {
+                "src_idx": src_orig,
+                "tgt_idx": tgt_orig,
+                "src": src_text,
+                "tgt": tgt_text,
+                "score": p["score"],
+            }
+            line = json.dumps(row, ensure_ascii=False) + "\n"
+            # Vecalign score = cosine distance (lower = better).
+            if p["score"] < ALIGN_MAX_DIST:
+                fkeep.write(line)
+                kept += 1
+            else:
+                freview.write(line)
+                review += 1
 
     if os.environ.get("HVB_KEEP_TMP"):
         print(f"KEEP tmp_dir: {tmp_dir}")
     else:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-    print(f"kept pairs (score>={ALIGN_MIN_SCORE}): {kept:,}")
-    print(f"output: {PAIRS_JSONL}")
+    print(f"kept pairs  (distance<{ALIGN_MAX_DIST}): {kept:,}")
+    print(f"review pool (distance>={ALIGN_MAX_DIST}): {review:,}")
+    print(f"kept:   {PAIRS_JSONL}")
+    print(f"review: {PAIRS_REVIEW_JSONL}")
 
 
 if __name__ == "__main__":

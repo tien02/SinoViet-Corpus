@@ -167,6 +167,62 @@ minus its own `HVB_MAX_PAIR_CHARS` drops.
 
 ---
 
+## 7b. BGE-M3 embedder + Vecalign rerank (2026-07-07)
+
+Replaced LaBSE with **BGE-M3** (`BAAI/bge-m3`, 1024-dim) for Stage 4. Stronger
+CJK representation. Loaded via `FlagEmbedding` directly — `SentenceTransformer`
+5.6.0 ships an incompatible `Pooling` module config and `torch<2.6` blocks the
+model's `pytorch_model.bin` under CVE-2025-32434. FlagEmbedding reads the
+`.bin` natively and bypasses both issues.
+
+Vecalign outputs `data/aligned/pairs.jsonl`, then `scripts/rerank_combined.py`
+(stage 5b) computes a `combined = 0.5·dist_sim + 0.5·sino` score, rescues
+vecalign-rejected pairs with `sino ≥ 0.40`, sorts by `combined` desc, writes
+`data/aligned/pairs_reranked.jsonl`.
+
+### Numbers
+
+| Embedder            | kept pairs (`score≥0.5`) | rescued (sino≥0.40) | final   | delivered (sino≥0.15) |
+|---------------------|--------------------------|---------------------|---------|-----------------------|
+| LaBSE (prior run)   | 52 783                   | —                   | —       | —                     |
+| **BGE-M3 (current)**| 43 782                   | 48                  | 43 830  | **11 402**            |
+
+The 11 402 figure is the exported deliverable after the new `HVB_MIN_SINO=0.15`
+filter drops pairs with negligible Sino-Viet phonetic overlap. Set
+`HVB_MIN_SINO=0` to disable, or `0.30` for a high-precision subset.
+
+### Honest read on quality
+
+Top-scoring pairs under BGE-M3 look poor on inspection — short Hán name/title
+lines (`子善,廕恩騎尉。`) paired with long unrelated Việt sentences. Sino
+proxy saturates to 1.0 because every Hán character finds a Sino-Viet reading
+*somewhere* in a long Việt sentence. LaBSE top pairs are equally noisy
+(different failure mode: long page-merged Hán blocks paired with short Việt
+sentences, sino=0).
+
+The bottleneck is **not the embedder** — it is the Hán sentence splitter
+leaving 13 K-character paragraphs in the pool (one observed sample:
+13 163 chars, 1 terminator, 787 newlines). The current
+zero-terminator fallback in `split_han.py` only triggers when a block has
+*zero* terminators; one stray `。` anywhere in a 13 K block disables it.
+Fixing this is the next lever — both embedders will improve.
+
+### How to compare future runs
+
+Use the manual eval framework in [04_eval.md](04_eval.md):
+`build_eval_sample.py` → label CSV by hand → `score_eval.py` reports
+per-stratum precision + bootstrap 95% CI. A change is an improvement iff
+overall precision rises **outside the prior run's CI** on the same sample
+(same `--seed`).
+
+The current sample strata for BGE-M3:
+`high=0  mid=23  low=43 807` — combined scores are very low, so 77 of the
+100 sampled pairs come from the noisy `low` stratum. Label them anyway; the
+sino-correct delta tells you whether the proxy still ranks good pairs above
+bad ones.
+
+---
+
 ## 8. End-to-end numbers at a glance
 
 | Stage              | Hán (input)              | PaddleOCR  | Unlimited-OCR | PaddleOCR-VL-1.6 (Hán post-fix) |

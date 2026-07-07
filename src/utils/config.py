@@ -84,6 +84,12 @@ BERTALIGN_REPO = ROOT / "external" / "bertalign"
 # handles non-monotonic drift).
 ALIGNER = os.environ.get("HVB_ALIGNER", "vecalign")
 ALIGN_MIN_SCORE = float(os.environ.get("ALIGN_MIN_SCORE", "0.5"))
+# Vecalign emits raw cosine DISTANCE (lower = better; see
+# external/vecalign/dp_utils.py:282). Filter keeps pairs with
+# distance < ALIGN_MAX_DIST in pairs.jsonl; the rest goes to
+# pairs_review.jsonl for manual audit / QA back-translation.
+ALIGN_MAX_DIST = float(os.environ.get("ALIGN_MAX_DIST", "0.7"))
+PAIRS_REVIEW_JSONL = ALIGNED / "pairs_review.jsonl"
 
 # LLM backend for optional OCR post-correction (Stage 2b): vLLM, OpenAI-compatible.
 # Qwen2.5-7B-Instruct. Set HVB_SKIP_LLM_CORRECT=1 to copy raw OCR → corrected and

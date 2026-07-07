@@ -2,18 +2,25 @@
 
 Produces the three files the course spec asks for:
   {prefix}_raw.txt       - raw OCR concatenated (tap4 + tap5 + tap6)
-  {prefix}_parallel.tsv  - [pair_id]\\t[han_sentence]\\t[viet_sentence]
-  {prefix}_parallel.xlsx - same three columns in Excel
+  {prefix}_parallel.tsv  - [pair_id]\\t[han_sentence]\\t[viet_sentence]\\t[sino]
+  {prefix}_parallel.xlsx - same columns in Excel
 
 Reads only pairs.jsonl (align output) and the raw OCR txt files. Prefix is set
 via HVB_DELIVERABLE_PREFIX (mã số sinh viên).
+
+Optional Sino-Viet phonetic filter (HVB_MIN_SINO, default 0 = off): drops pairs
+whose Han→Sino-Viet pronunciation has <threshold lexical overlap with the
+Việt side. Effective at removing semantic-embedding false positives on short
+title/header pairs. See scripts/rescore_sino.py.
 """
 from __future__ import annotations
 
 import csv
 import json
 import os
+import re
 import sys
+import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -32,18 +39,54 @@ from src.utils.config import (  # noqa: E402
 # Also keeps every cell under Excel's 32,767-char limit. Set 0 to disable.
 MAX_PAIR_CHARS = int(os.environ.get("HVB_MAX_PAIR_CHARS", "2000"))
 
+# Minimum Sino-Viet phonetic precision for a pair to be kept. 0 = off.
+# Default 0.15 drops ~5% of pairs (short titles, publisher names, page
+# furniture bleed — vecalign false positives where semantic embedding
+# happens to land similar-length short strings). Override via HVB_MIN_SINO=0
+# to disable, or HVB_MIN_SINO=0.30 for high-precision subset.
+MIN_SINO = float(os.environ.get("HVB_MIN_SINO", "0.15"))
+
+_CONVERTER = None
+_TOK_RE = re.compile(r"[A-Za-zÀ-ỹ]+")
+
+
+def _strip_diacritics(s: str) -> str:
+    s = s.lower()
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def _sino_precision(han: str, viet: str) -> float:
+    """Han→Sino-Viet pronunciation overlap with Việt side. 0..1."""
+    global _CONVERTER
+    if _CONVERTER is None:
+        try:
+            from cn2vn import converter as _c
+            _CONVERTER = _c
+        except ImportError:
+            return 1.0
+    sino = _CONVERTER.cn2vn(han)
+    toks = _TOK_RE.findall(sino)
+    viet_flat = _strip_diacritics(viet)
+    ge3 = [_strip_diacritics(t) for t in toks if len(_strip_diacritics(t)) >= 3]
+    if not ge3:
+        return 0.0
+    matched = sum(1 for t in ge3 if t in viet_flat)
+    return matched / len(ge3)
+
 # One physical line per sentence: collapse internal newlines so the TSV/XLSX
 # stay strictly one record per row.
 def _flatten(text: str) -> str:
     return " ".join(text.split())
 
 
-def load_pairs() -> list[tuple[int, str, str]]:
+def load_pairs() -> list[tuple[int, str, str, float]]:
     if not PAIRS_JSONL.exists():
         raise SystemExit(f"Missing {PAIRS_JSONL}. Run the align stage first.")
-    rows: list[tuple[int, str, str]] = []
+    rows: list[tuple[int, str, str, float]] = []
     dropped_empty = 0
     dropped_long = 0
+    dropped_sino = 0
     pair_id = 1
     for line in PAIRS_JSONL.open(encoding="utf-8"):
         line = line.strip()
@@ -58,13 +101,19 @@ def load_pairs() -> list[tuple[int, str, str]]:
         if MAX_PAIR_CHARS and (len(han) > MAX_PAIR_CHARS or len(viet) > MAX_PAIR_CHARS):
             dropped_long += 1
             continue
-        rows.append((pair_id, han, viet))
+        sino = _sino_precision(han, viet) if MIN_SINO > 0 else 0.0
+        if MIN_SINO > 0 and sino < MIN_SINO:
+            dropped_sino += 1
+            continue
+        rows.append((pair_id, han, viet, sino))
         pair_id += 1
     if not rows:
         raise SystemExit(f"No usable pairs in {PAIRS_JSONL}.")
     print(
         f"  pairs kept={len(rows):,} "
-        f"dropped(empty={dropped_empty}, >{MAX_PAIR_CHARS}chars={dropped_long})"
+        f"dropped(empty={dropped_empty}, >{MAX_PAIR_CHARS}chars={dropped_long}"
+        + (f", sino<{MIN_SINO}={dropped_sino}" if MIN_SINO > 0 else "")
+        + ")"
     )
     return rows
 
@@ -85,20 +134,22 @@ def write_raw() -> None:
     print(f"  raw   -> {DELIVERABLE_RAW} ({len(taps)} tập)")
 
 
-def write_tsv(rows: list[tuple[int, str, str]]) -> None:
+def write_tsv(rows: list[tuple[int, str, str, float]]) -> None:
     with DELIVERABLE_TSV.open("w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
-        w.writerow(["pair_id", "han_sentence", "viet_sentence"])
+        w.writerow(["pair_id", "han_sentence", "viet_sentence", "sino"])
         w.writerows(rows)
     print(f"  tsv   -> {DELIVERABLE_TSV} ({len(rows):,} pairs)")
 
 
-def write_xlsx(rows: list[tuple[int, str, str]]) -> None:
+def write_xlsx(rows: list[tuple[int, str, str, float]]) -> None:
     try:
         import pandas as pd
     except ImportError:
         raise SystemExit("pandas required for xlsx export (uv add pandas openpyxl).")
-    df = pd.DataFrame(rows, columns=["pair_id", "han_sentence", "viet_sentence"])
+    df = pd.DataFrame(
+        rows, columns=["pair_id", "han_sentence", "viet_sentence", "sino"]
+    )
     try:
         df.to_excel(DELIVERABLE_XLSX, index=False, engine="openpyxl")
     except ImportError:

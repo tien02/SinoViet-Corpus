@@ -4,9 +4,14 @@ Input:  silver/<pdf_stem>/<pdf_stem>_<page_index>_res.json
 Output: data/interim/vi_ocr_raw/tap{4,5,6}_page_{page:04d}.txt
         data/interim/vi_ocr_raw/tap{4,5,6}.txt  (combined per-tập)
 
-Drops page furniture (header/footer/page-number/image/table blocks). Keeps
-narrative text blocks + titles + footnotes. Blocks ordered by
-`block_order` (None → end).
+Drops page furniture (header/footer/page-number/image/table blocks) plus
+editor footnotes / reference content that have no Hán counterpart. Keeps
+narrative text blocks + titles. Blocks ordered by `block_order` (None → end).
+
+Also filters two OCR-artefact classes at the block level:
+  - Long comma-separated integer runs (VLM decoder collapse on back-matter
+    indices; produces monotonic hallucinations like `100,101,...,605`).
+  - Book spine / running headers mis-tagged as `text` (`章N - XX - TN`).
 """
 from __future__ import annotations
 
@@ -25,11 +30,12 @@ KEEP_LABELS = {
     "paragraph_title",
     "abstract",
     "aside_text",
-    "footnote",
-    "reference_content",
     "content",
     "vertical_text",
 }
+
+INT_RUN_RE = re.compile(r"^\s*\d+(?:\s*,\s*\d+){19,}\s*,?\s*$")
+SPINE_RE = re.compile(r"^\s*章\s*\d+\s*-\s*\w+\s*-\s*T\d+\s*$")
 
 
 def pdf_stem_to_tap(stem: str) -> str | None:
@@ -50,8 +56,11 @@ def render_page(data: dict) -> str:
     chunks = []
     for b in blocks:
         content = (b.get("block_content") or "").strip()
-        if content:
-            chunks.append(content)
+        if not content:
+            continue
+        if INT_RUN_RE.match(content) or SPINE_RE.match(content):
+            continue
+        chunks.append(content)
     return "\n\n".join(chunks)
 
 

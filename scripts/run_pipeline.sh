@@ -137,6 +137,7 @@ case "$STAGE" in
         ;;
     align)
         run vecalign "$ALIGN_CMD"
+        run rerank "uv run python scripts/rerank_combined.py --in-place"
         ;;
     export)
         run export_deliverable "uv run python -m src.07_export.export_deliverable"
@@ -155,6 +156,7 @@ case "$STAGE" in
         run split_vi "uv run python -m src.03_split.split_vi"
         run labse_embed "uv run python -m src.04_embed.labse_embed"
         run vecalign "$ALIGN_CMD"
+        run rerank "uv run python scripts/rerank_combined.py --in-place"
         run export_deliverable "uv run python -m src.07_export.export_deliverable"
         ;;
     *)

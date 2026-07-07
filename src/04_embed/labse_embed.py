@@ -2,6 +2,11 @@
 
 Default backbone: BAAI/bge-m3 (1024-dim). Override via HVB_EMBED_MODEL.
 
+BGE-M3 is loaded via FlagEmbedding (official package) because the model
+shipped only pytorch_model.bin locally, and SentenceTransformer 5.x fails
+to load .bin under torch<2.6 (CVE-2025-32434) + has incompatible Pooling
+module config. FlagEmbedding loads the .bin directly without ST.
+
 Output: data/interim/{han,vi}_embeds.npy (N x D float32, D=1024 for BGE-M3)
 """
 from __future__ import annotations
@@ -26,7 +31,7 @@ from src.utils.config import (  # noqa: E402
 
 
 def load_sentences(path: Path) -> list[str]:
-    out = []
+    out: list[str] = []
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             obj = json.loads(line)
@@ -35,15 +40,63 @@ def load_sentences(path: Path) -> list[str]:
 
 
 def embed_texts(texts: list[str], model_name: str = EMBED_MODEL) -> np.ndarray:
+    if "bge-m3" in model_name.lower():
+        return _embed_bgem3(texts, model_name)
+    return _embed_sentence_transformer(texts, model_name)
+
+
+def _embed_bgem3(texts: list[str], model_name: str) -> np.ndarray:
+    """BGE-M3 via FlagEmbedding. Vectors are pre-normalized (norm ≈ 1.0)."""
+    from FlagEmbedding import BGEM3FlagModel
+
+    snap = _resolve_local_snapshot(model_name)
+    device = "cuda" if DEVICE.startswith("cuda") else "cpu"
+    idx = 0
+    if DEVICE.startswith("cuda") and ":" in DEVICE:
+        idx = int(DEVICE.split(":")[1])
+    model = BGEM3FlagModel(
+        snap or model_name,
+        use_fp16=device == "cuda",
+        device=device if device == "cpu" else idx,
+    )
+    n = len(texts)
+    out: list[np.ndarray] = []
+    for i in range(0, n, EMBED_BATCH):
+        chunk = texts[i : i + EMBED_BATCH]
+        r = model.encode(
+            chunk,
+            batch_size=len(chunk),
+            max_length=EMBED_MAX_SEQ,
+            return_dense=True,
+            return_sparse=False,
+            return_colbert_vecs=False,
+        )
+        out.append(np.asarray(r["dense_vecs"], dtype=np.float32))
+    embs = np.concatenate(out, axis=0)
+    # Guard: re-normalize in case fp16 rounding left norms slightly off 1.
+    norms = np.linalg.norm(embs, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return embs / norms
+
+
+def _resolve_local_snapshot(model_name: str) -> str | None:
+    cache = Path.home() / ".cache/huggingface/hub"
+    repo_dir = cache / model_name.replace("/", "--")
+    if not (repo_dir / "snapshots").exists():
+        return None
+    snaps = list((repo_dir / "snapshots").iterdir())
+    return str(snaps[0]) if snaps else None
+
+
+def _embed_sentence_transformer(
+    texts: list[str], model_name: str
+) -> np.ndarray:
+    """LaBSE / other ST models."""
     import os
     from sentence_transformers import SentenceTransformer
-    # use_safetensors=True bypasses torch<2.6 CVE-2025-32434 hard-block on
-    # .bin checkpoints. LaBSE + GTE + E5 all ship safetensors variants.
-    # trust_remote_code required by GTE-family + Qwen-embeddings; opt-in
-    # via HVB_TRUST_REMOTE_CODE=1 — executes arbitrary HF-hub Python.
+
     trust = bool(os.environ.get("HVB_TRUST_REMOTE_CODE", ""))
-    kwargs = {"use_safetensors": True}
-    st_kwargs = {"device": DEVICE, "model_kwargs": kwargs}
+    st_kwargs: dict = {"device": DEVICE}
     if trust:
         st_kwargs["trust_remote_code"] = True
     model = SentenceTransformer(model_name, **st_kwargs)
