@@ -209,17 +209,16 @@ Fixing this is the next lever — both embedders will improve.
 
 ### How to compare future runs
 
-Use the manual eval framework in [04_eval.md](04_eval.md):
-`build_eval_sample.py` → label CSV by hand → `score_eval.py` reports
-per-stratum precision + bootstrap 95% CI. A change is an improvement iff
-overall precision rises **outside the prior run's CI** on the same sample
-(same `--seed`).
+No manual labels available — use the Sino-Viet phonetic proxy in
+[04_eval.md](04_eval.md): `scripts/rescore_sino.py` outputs score-band
+histograms. A change is an improvement iff:
+- More pairs delivered at the same `HVB_MIN_SINO` threshold, OR
+- Higher sino-correct delta (better correlation between sino and correctness)
 
-The current sample strata for BGE-M3:
-`high=0  mid=23  low=43 807` — combined scores are very low, so 77 of the
-100 sampled pairs come from the noisy `low` stratum. Label them anyway; the
-sino-correct delta tells you whether the proxy still ranks good pairs above
-bad ones.
+Combined score distribution for BGE-M3:
+`high=0  mid=23  low=43 807` — 99.95% of pairs in `low` band (combined<0.55),
+indicating poor semantic alignment quality. The sino filter (≥0.15) drops
+74% of aligned pairs before delivery.
 
 ---
 

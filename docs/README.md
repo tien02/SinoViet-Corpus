@@ -10,7 +10,7 @@ Hướng dẫn chi tiết cho pipeline Hán-Việt Đại Nam Thực Lục.
 | [01_setup.md](01_setup.md) | Cài đặt môi trường: uv, vLLM docker, system deps, verification |
 | [02_data.md](02_data.md) | Spec input data, định dạng output, schema JSONL |
 | [03_pipeline.md](03_pipeline.md) | Chi tiết từng stage: code flow, params, outputs |
-| [04_eval.md](04_eval.md) | Methodology đánh giá 5 trụ, metric definitions, targets |
+| [04_eval.md](04_eval.md) | Sino-Viet phonetic proxy, no manual labels available, sino bands + rescue |
 | [05_troubleshooting.md](05_troubleshooting.md) | Lỗi thường gặp + cách fix |
 | [06_extend.md](06_extend.md) | Mở rộng: thêm PDF, đổi LLM, custom eval rubric |
 | [07_unlimited_ocr.md](07_unlimited_ocr.md) | Stage 2 — Unlimited-OCR (vLLM, 2-GPU): tại sao chọn, setup, run seamless với align |
