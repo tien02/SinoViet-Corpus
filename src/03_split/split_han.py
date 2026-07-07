@@ -72,16 +72,19 @@ def split_classical(text: str) -> list[str]:
             continue
         for k, ann in enumerate(protected):
             s = s.replace(f"__ANN{k}__", ann)
-        # Only fall back to newline split when regex terminators found
-        # nothing in this segment — protects zero-terminator edict blocks
-        # while leaving normal punctuated prose (and annotation-heavy long
-        # sentences) atomic.
-        if (
-            len(s) > MAX_LEN
-            and "\n" in s
-            and not any(c in s for c in TERM_CHARS)
-        ):
-            sentences.extend(_greedy_merge_lines(s))
+        # Fall back to newline split when block is oversized AND either:
+        # (a) has zero terminators (zero-terminator edict blocks), or
+        # (b) has very few terminators relative to size (paragraph-merged
+        # blocks with 1 stray 。+ many newlines), or
+        # (c) is exceptionally large (>10K chars).
+        # Prior bug: condition required zero terminators; 1 stray 。in a
+        # 13K-char paragraph disabled the fallback.
+        if len(s) > MAX_LEN and "\n" in s:
+            term_count = sum(1 for c in s if c in TERM_CHARS)
+            if term_count < 5 or len(s) > 10000:
+                sentences.extend(_greedy_merge_lines(s))
+            else:
+                sentences.append(s)
         else:
             sentences.append(s)
     return sentences
