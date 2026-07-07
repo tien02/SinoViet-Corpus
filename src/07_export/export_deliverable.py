@@ -52,6 +52,15 @@ MIN_SINO = float(os.environ.get("HVB_MIN_SINO", "0.15"))
 MIN_LEN_RATIO = float(os.environ.get("HVB_MIN_LEN_RATIO", "0.5"))
 MAX_LEN_RATIO = float(os.environ.get("HVB_MAX_LEN_RATIO", "8.0"))
 
+# Rescue policy: if embedder cosine is high, don't drop a pair for weak sino or
+# out-of-range length ratio. Prevents false positives from proxy filters when
+# semantic embedding is confident (e.g. Hán 千載 → Việt "nghìn năm" — no
+# Sino-Viet syllable match but clearly correct translation).
+# Only applies when score is cosine similarity (bertalign). Set to 1.1 to disable.
+SINO_RESCUE_COS = float(os.environ.get("HVB_SINO_RESCUE_COS", "0.55"))
+RATIO_RESCUE_COS = float(os.environ.get("HVB_RATIO_RESCUE_COS", "0.60"))
+_SCORE_IS_SIM = os.environ.get("HVB_ALIGNER", "vecalign").lower() == "bertalign"
+
 _CONVERTER = None
 _TOK_RE = re.compile(r"[A-Za-zÀ-ỹ]+")
 
@@ -94,6 +103,8 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
     dropped_long = 0
     dropped_sino = 0
     dropped_ratio = 0
+    rescued_ratio = 0
+    rescued_sino = 0
     pair_id = 1
     for line in PAIRS_JSONL.open(encoding="utf-8"):
         line = line.strip()
@@ -108,16 +119,23 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
         if MAX_PAIR_CHARS and (len(han) > MAX_PAIR_CHARS or len(viet) > MAX_PAIR_CHARS):
             dropped_long += 1
             continue
+        cos = float(p.get("score", 0.0)) if _SCORE_IS_SIM else 0.0
         if MIN_LEN_RATIO > 0 or MAX_LEN_RATIO > 0:
             ratio = len(viet) / max(1, len(han))
             if (MIN_LEN_RATIO > 0 and ratio < MIN_LEN_RATIO) or \
                     (MAX_LEN_RATIO > 0 and ratio > MAX_LEN_RATIO):
-                dropped_ratio += 1
-                continue
+                if _SCORE_IS_SIM and cos >= RATIO_RESCUE_COS:
+                    rescued_ratio += 1
+                else:
+                    dropped_ratio += 1
+                    continue
         sino = _sino_precision(han, viet) if MIN_SINO > 0 else 0.0
         if MIN_SINO > 0 and sino < MIN_SINO:
-            dropped_sino += 1
-            continue
+            if _SCORE_IS_SIM and cos >= SINO_RESCUE_COS:
+                rescued_sino += 1
+            else:
+                dropped_sino += 1
+                continue
         rows.append((pair_id, han, viet, sino))
         pair_id += 1
     if not rows:
@@ -130,6 +148,11 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
         + (f", sino<{MIN_SINO}={dropped_sino}" if MIN_SINO > 0 else "")
         + ")"
     )
+    if _SCORE_IS_SIM and (rescued_ratio or rescued_sino):
+        print(
+            f"  rescued by cosine: ratio={rescued_ratio} (cos≥{RATIO_RESCUE_COS}), "
+            f"sino={rescued_sino} (cos≥{SINO_RESCUE_COS})"
+        )
     return rows
 
 
