@@ -1,34 +1,62 @@
-# Current Issues (2026-07-07)
+# Current Issues (2026-07-07, updated)
 
-Pipeline status after BGE-M3 + rerank + sino filter + split fix.
-Delivered: **11 678 pairs** (sino≥0.15 filter on 44 718 aligned).
+Pipeline status after **Hán scope slice** (Tập 4-6 only) + BGE-M3 (old model) + rerank.
+Delivered: **7 041 pairs** (sino≥0.15 filter on 7 043 aligned).
+
+## TL;DR — biggest fix was scope slice, not embedder
+
+Original pipeline aligned **all 55 105 Hán sentences** (10 kỷ + Tiền Biên +
+Liệt Truyện) to only Việt Tập 4-6. Scope mismatch = 62% garbage Hán scope
+polluting alignment. Slicing Hán to verified Tập 4-6 line range
+(50 073–138 723) reduced pairs from 44 718 → 7 043 and lifted
+high-confidence band from ~0.05% → 7.0%.
+
+### Boundary verification (Việt OCR title pages ↔ Hán txt)
+
+| Tập | Việt title page | Hán line range | Coverage |
+|-----|-----------------|----------------|----------|
+| 4 | "CHÍNH BIÊN — ĐỀ NHỊ KỶ — QUYỀN CXVII" + Minh Mệnh 15 [1834] | 50 073 → 80 943 | Kỷ 2 Q.117–176 |
+| 5 | "ĐỀ NHỊ KỶ — QUYỀN CLXXVII" + Minh Mệnh 18 [1837] | 81 590 → 107 115 | Kỷ 2 Q.177–220 |
+| 6 | "ĐỀ TAM KỶ — QUYỀN THỦ" + Tự Đức 30 preface | 107 116 → 138 723 | Kỷ 3 Q.1–72 |
+
+Cross-check: Hán line 50 073 reads `甲午明命十五年` ↔ Việt Tập 4 p2
+"Giáp Ngọ, năm Minh Mệnh thứ 15 [1834]". Exact match.
+
+### Before vs after slice (same BGE-M3 embedder)
+
+| Metric | Before (full Hán) | After (sliced) |
+|--------|-------------------|----------------|
+| Hán sentences | 55 105 | 7 048 |
+| Pairs aligned | 44 718 | 7 043 |
+| Pairs delivered | 11 678 | 7 041 |
+| High band (combined≥0.55) | ~0.05% | 7.0% (493) |
+| Mid band (0.35–0.55) | low | 75.4% (5 309) |
+| Low band (<0.35) | 99.95% | 17.6% (1 241) |
+| Top pair quality | garbage (name/title) | genuine translations |
+
+### Slice implementation
+
+- `src/utils/config.py`: `HVB_HAN_LINE_START=50073`, `HVB_HAN_LINE_END=138723` env vars.
+- `src/01_prep/normalize_han.py`: slice raw lines before normalize.
+- Set both to `0` to disable (use full Hán text).
+
+---
 
 ## Issue 1 — Embedder fails on Classical→Quốc ngữ translation
 
-**Severity:** Critical — root cause of poor alignment quality.
+**Severity:** Critical (partially mitigated by slice, still root cause of 17.6% low-band).
 
-**Symptom:** 99.95% of aligned pairs in `low` band (combined<0.55).
-Top-scoring pairs are garbage:
+**Symptom:** After slice, 1 241/7 043 pairs still in low band. Top of
+`pairs_reranked.jsonl` is now meaningful (sino=1.0, real translations),
+but mid/low band still has embedder noise.
 
-```
-combined=0.723 sino=1.00
-  H: 子攸,廕恩騎尉。 (Tử Du, ấm ân kỵ uý — name + title)
-  V: Nhân sắc dụ: Từ Nghệ An ra Bắc, phàm có những quan to ở Kinh...
-```
-
-**Cause:** BGE-M3 (and LaBSE) do not capture Classical Chinese →
-Quốc ngữ translation equivalence. Both embedders were trained on
-modern multilingual data; Han-Viet classical diglossia is
-out-of-distribution.
-
-**Evidence:**
-- BGE-M3 top pair distance score = 0.54 (similarity), unrelated content
-- LaBSE top pair distance score = 1.21, equally unrelated content
-- Both embedders fail in different ways → not embedder-specific
+**Cause:** BGE-M3 (and LaBSE) trained on modern multilingual data;
+Classical Chinese → Quốc ngữ diglossia out-of-distribution.
 
 **Candidate fixes:**
-1. Cross-lingual encoder fine-tuned on Classical→Quốc ngữ (may not exist)
-2. Multilingual MT model embeddings (Qwen2.5-7B, NLLB)
+1. **Qwen3-Embedding-0.6B** — code branch ready in `src/04_embed/labse_embed.py`,
+   blocked on GPU availability (llama-server holding both GPUs). Defer.
+2. Cross-lingual encoder fine-tuned on Classical→Quốc ngữ (may not exist)
 3. Sino-primary alignment (replace cosine distance with sino precision)
 4. Iterative coarse-to-fine (chapter-heading anchor → within-chapter align)
 

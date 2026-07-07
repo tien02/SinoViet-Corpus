@@ -91,9 +91,13 @@ def main() -> None:
     )
     print(f"kept: {len(kept_pairs):,}  review: {len(review_pairs):,}")
 
+    # Bertalign score = cosine similarity (higher=better); Vecalign = distance.
+    aligner = os.environ.get("HVB_ALIGNER", "vecalign").lower()
+    score_is_sim = aligner == "bertalign"
+
     def enrich(p: dict, rescued: bool) -> dict:
         prec, m, t = sino_precision(p["src"], p["tgt"])
-        norm_sim = max(0.0, 1.0 - p["score"])
+        norm_sim = max(0.0, min(1.0, p["score"] if score_is_sim else 1.0 - p["score"]))
         combined = args.w_dist * norm_sim + args.w_sino * prec
         return {
             "src_idx": p["src_idx"],

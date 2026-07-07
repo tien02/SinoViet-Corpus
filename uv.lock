@@ -662,10 +662,10 @@ requires-dist = [
     { name = "rich", specifier = ">=13" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "sentence-splitter", specifier = ">=1.4" },
-    { name = "sentence-transformers", specifier = ">=3" },
+    { name = "sentence-transformers", specifier = ">=2.7" },
     { name = "torch", specifier = ">=2.3", index = "https://download.pytorch.org/whl/cu121" },
     { name = "tqdm", specifier = ">=4" },
-    { name = "transformers", specifier = ">=4.44" },
+    { name = "transformers", specifier = ">=4.51" },
     { name = "underthesea", specifier = ">=6.8" },
 ]
 provides-extras = ["dev"]

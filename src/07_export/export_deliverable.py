@@ -46,6 +46,12 @@ MAX_PAIR_CHARS = int(os.environ.get("HVB_MAX_PAIR_CHARS", "2000"))
 # to disable, or HVB_MIN_SINO=0.30 for high-precision subset.
 MIN_SINO = float(os.environ.get("HVB_MIN_SINO", "0.15"))
 
+# Length ratio guardrails (viet_chars / han_chars). Bertalign m-n beads can
+# emit heavy asymmetric merges; spot-checked pairs outside [0.5, 8.0] are
+# almost always bad matches. Set both to 0 to disable.
+MIN_LEN_RATIO = float(os.environ.get("HVB_MIN_LEN_RATIO", "0.5"))
+MAX_LEN_RATIO = float(os.environ.get("HVB_MAX_LEN_RATIO", "8.0"))
+
 _CONVERTER = None
 _TOK_RE = re.compile(r"[A-Za-zÀ-ỹ]+")
 
@@ -87,6 +93,7 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
     dropped_empty = 0
     dropped_long = 0
     dropped_sino = 0
+    dropped_ratio = 0
     pair_id = 1
     for line in PAIRS_JSONL.open(encoding="utf-8"):
         line = line.strip()
@@ -101,6 +108,12 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
         if MAX_PAIR_CHARS and (len(han) > MAX_PAIR_CHARS or len(viet) > MAX_PAIR_CHARS):
             dropped_long += 1
             continue
+        if MIN_LEN_RATIO > 0 or MAX_LEN_RATIO > 0:
+            ratio = len(viet) / max(1, len(han))
+            if (MIN_LEN_RATIO > 0 and ratio < MIN_LEN_RATIO) or \
+                    (MAX_LEN_RATIO > 0 and ratio > MAX_LEN_RATIO):
+                dropped_ratio += 1
+                continue
         sino = _sino_precision(han, viet) if MIN_SINO > 0 else 0.0
         if MIN_SINO > 0 and sino < MIN_SINO:
             dropped_sino += 1
@@ -112,6 +125,8 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
     print(
         f"  pairs kept={len(rows):,} "
         f"dropped(empty={dropped_empty}, >{MAX_PAIR_CHARS}chars={dropped_long}"
+        + (f", ratio∉[{MIN_LEN_RATIO},{MAX_LEN_RATIO}]={dropped_ratio}"
+           if (MIN_LEN_RATIO > 0 or MAX_LEN_RATIO > 0) else "")
         + (f", sino<{MIN_SINO}={dropped_sino}" if MIN_SINO > 0 else "")
         + ")"
     )

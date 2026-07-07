@@ -34,6 +34,15 @@ else:
 GOLD = DATA / "gold"
 
 HAN_TXT = RAW / "Đại Nam Thực Lục - 大南寔錄_full.txt"
+
+# Hán line slice — restrict Hán TXT to lines covering only Việt Tập 4-6.
+# Verified via title-page markers (Quyển CXVII/CLXXVII/Đệ Tam Kỷ):
+#   Tập 4 = Kỷ 2 Q.117 (line 50073) → Q.176 end (line 80943)
+#   Tập 5 = Kỷ 2 Q.177 (line 81590) → end Kỷ 2 (line 107115)
+#   Tập 6 = Kỷ 3 Q.1 (line 107116) → end Kỷ 3 (line 138723)
+# Set both to 0 to disable slicing (use full Hán text).
+HAN_LINE_START = int(os.environ.get("HVB_HAN_LINE_START", "50073"))
+HAN_LINE_END = int(os.environ.get("HVB_HAN_LINE_END", "138723"))
 VI_PDF_TAP4 = RAW / "Đại Nam Thực Lục tập 4 - Quốc Sử Quán Triều Nguyễn.pdf"
 VI_PDF_TAP5 = RAW / "Đại Nam Thực Lục tập 5 - Quốc Sử Quán Triều Nguyễn.pdf"
 VI_PDF_TAP6 = RAW / "Đại Nam Thực Lục tập 6 - Quốc Sử Quán Triều Nguyễn.pdf"
@@ -50,7 +59,7 @@ VI_SENT = INTERIM / "vi_sentences.jsonl"
 HAN_EMBEDS = INTERIM / "han_embeds.npy"
 VI_EMBEDS = INTERIM / "vi_embeds.npy"
 
-PAIRS_JSONL = ALIGNED / "pairs.jsonl"
+PAIRS_JSONL = Path(os.environ["HVB_PAIRS_OUT"]) if os.environ.get("HVB_PAIRS_OUT") else ALIGNED / "pairs.jsonl"
 
 # Course deliverable files: {prefix}_raw.txt, {prefix}_parallel.tsv/.xlsx.
 # Set prefix to your mã số sinh viên, e.g. HVB_DELIVERABLE_PREFIX=21127001.

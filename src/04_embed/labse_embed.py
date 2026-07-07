@@ -111,6 +111,32 @@ def _embed_sentence_transformer(
     return embs.astype(np.float32)
 
 
+def _embed_qwen3(texts: list[str], model_name: str) -> np.ndarray:
+    """Qwen3-Embedding (0.6B/4B/8B) via sentence-transformers.
+
+    Requires transformers>=4.51, sentence-transformers>=2.7.
+    Instruction-aware; for bitext mining we encode symmetrically (no query
+    prompt) — both Hán and Việt treated as documents. Asymmetric
+    (prompt_name='query' on one side) is a tunable for later.
+    """
+    from sentence_transformers import SentenceTransformer
+
+    model = SentenceTransformer(
+        model_name,
+        device=DEVICE,
+        model_kwargs={"attn_implementation": "eager"},
+    )
+    model.max_seq_length = EMBED_MAX_SEQ
+    embs = model.encode(
+        texts,
+        batch_size=EMBED_BATCH,
+        convert_to_numpy=True,
+        normalize_embeddings=True,
+        show_progress_bar=True,
+    )
+    return embs.astype(np.float32)
+
+
 def main() -> None:
     for label, sent_path, out_path in [
         ("han", HAN_SENT, HAN_EMBEDS),

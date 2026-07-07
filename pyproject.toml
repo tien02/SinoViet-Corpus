@@ -12,10 +12,10 @@ dependencies = [
     "paddlepaddle-gpu>=2.6; platform_system=='Linux'",
     # NLP VI
     "underthesea>=6.8",
-    # embeddings + alignment (LaBSE via sentence-transformers)
-    "sentence-transformers>=3",
+    # embeddings + alignment (BGE-M3 + LaBSE + Qwen3-Embedding via sentence-transformers)
+    "sentence-transformers>=2.7",
     "numpy>=1.26",
-    "transformers>=4.44",
+    "transformers>=4.51",
     "torch>=2.3",
     "accelerate>=0.34",
     # vLLM OpenAI-compatible client (optional OCR post-correction, docker vllm)

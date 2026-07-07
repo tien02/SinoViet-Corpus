@@ -11,6 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.config import (  # noqa: E402
     HAN_CLEAN,
+    HAN_LINE_END,
+    HAN_LINE_START,
     HAN_TXT,
     SUBSET_HAN_CHARS,
     SUBSET_HAN_OFFSET,
@@ -54,7 +56,19 @@ def normalize(text: str) -> str:
 def main() -> None:
     if not HAN_TXT.exists():
         raise FileNotFoundError(f"Hán TXT not found: {HAN_TXT}")
-    raw = HAN_TXT.read_text(encoding="utf-8")
+    raw_text = HAN_TXT.read_text(encoding="utf-8")
+    raw_lines = raw_text.splitlines()
+    if HAN_LINE_START > 0 or HAN_LINE_END > 0:
+        start = HAN_LINE_START - 1 if HAN_LINE_START > 0 else 0
+        end = HAN_LINE_END if HAN_LINE_END > 0 else len(raw_lines)
+        sliced = "\n".join(raw_lines[start:end])
+        print(
+            f"Hán slice: lines [{HAN_LINE_START}:{HAN_LINE_END}] "
+            f"= {end - start:,} / {len(raw_lines):,} raw lines"
+        )
+        raw = sliced
+    else:
+        raw = raw_text
     clean = normalize(raw)
     if SUBSET_N > 0 and SUBSET_HAN_CHARS > 0:
         clean = clean[SUBSET_HAN_OFFSET : SUBSET_HAN_OFFSET + SUBSET_HAN_CHARS]
@@ -64,7 +78,7 @@ def main() -> None:
         )
     HAN_CLEAN.parent.mkdir(parents=True, exist_ok=True)
     HAN_CLEAN.write_text(clean, encoding="utf-8")
-    print(f"raw chars: {len(raw):,}")
+    print(f"raw chars: {len(raw):,}")  # noqa: F821 — raw always bound above
     print(f"clean chars: {len(clean):,}")
     print(f"ratio: {len(clean) / len(raw):.2%}")
     print(f"output: {HAN_CLEAN}")
