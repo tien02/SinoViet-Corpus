@@ -29,6 +29,8 @@ dependencies = [
     "faiss-cpu>=1.7",
     "numba>=0.60",
     "sentence-splitter>=1.4",
+    # Sino-Vietnamese phonetic proxy for pair quality eval (independent of embedder)
+    "cn2vn>=0.2",
 ]
 
 [project.optional-dependencies]

@@ -301,6 +301,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cn2vn"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/3a/ae8acb565a8f20fc3e421e2273941abc9f1298fdd4451139561f8a0a1e75/cn2vn-0.2.1.tar.gz", hash = "sha256:2ed43e1a13f1644acc994d8344a2ffd0aa7b2a6626ac076f7ccf22e81c5493b5", size = 69662, upload-time = "2025-10-21T11:48:43.216Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/64/fecfc046904c1775f4a1743cda84ad3de4d4bcaa4d0c8f23d6e922abada8/cn2vn-0.2.1-py3-none-any.whl", hash = "sha256:865f1b3f9b670a88918fadaa1377179d522385fa58f703b78759a4c67e4ccd37", size = 75347, upload-time = "2025-10-21T11:48:42.199Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -615,6 +624,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "accelerate" },
+    { name = "cn2vn" },
     { name = "cython" },
     { name = "faiss-cpu" },
     { name = "numba" },
@@ -647,6 +657,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=0.34" },
+    { name = "cn2vn", specifier = ">=0.2" },
     { name = "cython", specifier = ">=3.2.6" },
     { name = "faiss-cpu", specifier = ">=1.7" },
     { name = "ipython", marker = "extra == 'dev'" },
