@@ -18,6 +18,9 @@ Hướng dẫn chi tiết cho pipeline Hán-Việt Đại Nam Thực Lục.
 | [09_han_pipeline.md](09_han_pipeline.md) | Chi tiết Hán normalize + split: bug full-width→ASCII, paragraph preservation, zero-terminator edict fallback, measured impact (34K → 52K aligned pairs) |
 | [10_fail_cases.md](10_fail_cases.md) | Fail cases PaddleOCR-VL-1.6 + full-Hán alignment: 2 208 Hán uncovered, decoder collapse, repetition loop, back-matter asymmetry, cost ranking, fast wins |
 | [11_current_issues.md](11_current_issues.md) | Current pipeline issues (2026-07-07): embedder fails on Han-Viet, sino proxy saturation, vecalign score scale, coverage 21%, priority order |
+| [12_final_results.md](12_final_results.md) | Bertalign + BGE-M3 baseline results (2026-07-07) — pre-punctuator |
+| [13_han_punctuator.md](13_han_punctuator.md) | **guwen-biaodian punctuator (2026-07-08)** — 30,959 delivered pairs (5.3x baseline), cosine max 0.77→0.88, 1-1 beads 0.9%→47%. Supersedes ch.9 200-char chunker + ch.12 baseline |
+| [14_pipeline_diagram.md](14_pipeline_diagram.md) | ASCII pipeline diagram + full model registry (OCR, LLM, punctuator, embedder, aligner, sino) |
 
 ## Đọc theo thứ tự
 

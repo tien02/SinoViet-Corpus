@@ -14,6 +14,8 @@ dependencies = [
     "underthesea>=6.8",
     # embeddings + alignment (BGE-M3 + LaBSE + Qwen3-Embedding via sentence-transformers)
     "sentence-transformers>=2.7",
+    # BGE-M3 loader (labse_embed._embed_bgem3 — bypasses ST for .bin support)
+    "FlagEmbedding>=1.2",
     "numpy>=1.26",
     "transformers>=4.51",
     "torch>=2.3",

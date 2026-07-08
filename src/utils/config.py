@@ -51,6 +51,18 @@ if SUBSET_N > 0:
     VI_PDFS = [VI_PDF_TAP4]
 
 HAN_CLEAN = INTERIM / "han_clean.txt"
+# Punctuation-restored Han (guwen-biaodian pass on han_clean).
+# When present, split_han reads this instead of HAN_CLEAN — classical Chinese
+# without terminal punct otherwise falls into 200-char chunk fallback,
+# destroying semantics.
+HAN_PUNCT = INTERIM / "han_punctuated.txt"
+HAN_PUNCT_MODEL = os.environ.get(
+    "HVB_HAN_PUNCT_MODEL", "raynardj/classical-chinese-punctuation-guwen-biaodian"
+)
+HAN_PUNCT_WINDOW = int(os.environ.get("HVB_HAN_PUNCT_WINDOW", "300"))
+HAN_PUNCT_OVERLAP = int(os.environ.get("HVB_HAN_PUNCT_OVERLAP", "50"))
+HAN_PUNCT_BATCH = int(os.environ.get("HVB_HAN_PUNCT_BATCH", "16"))
+HAN_PUNCT_MAX_NEW = int(os.environ.get("HVB_HAN_PUNCT_MAX_NEW", "512"))
 VI_PAGES_DIR = INTERIM / "vi_pages"
 VI_OCR_RAW_DIR = INTERIM / "vi_ocr_raw"
 VI_OCR_CORRECTED_DIR = INTERIM / "vi_ocr_corrected"

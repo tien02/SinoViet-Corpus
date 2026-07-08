@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.utils.config import HAN_CLEAN, HAN_SENT  # noqa: E402
+from src.utils.config import HAN_CLEAN, HAN_PUNCT, HAN_SENT  # noqa: E402
 
 ZH_TERM_RE = re.compile(r"([。！？；!?;])")
 TERM_CHARS = "。！？；!?;"
@@ -25,6 +25,11 @@ ANNOT_CLOSE = "〉」』）"
 # up), whole-block atomically forces oversized drops at export.
 MAX_LEN = 2000
 CHUNK_TARGET = 200
+# Post-punctuator merge: guwen-biaodian over-predicts 。 after common
+# characters (議, 賞, 嗣), yielding many <10-char fragments that lack
+# enough semantic signal for BGE-M3. Merge fragments below MIN_HAN_LEN
+# into the following sentence (or previous, at paragraph end).
+MIN_HAN_LEN = int(__import__("os").environ.get("HVB_MIN_HAN_LEN", "15"))
 
 
 def split_classical(text: str) -> list[str]:
@@ -90,6 +95,32 @@ def split_classical(text: str) -> list[str]:
     return sentences
 
 
+def _merge_short(sents: list[str], min_len: int) -> list[str]:
+    """Merge sentences below min_len forward into the next sentence.
+
+    Trailing short fragment (paragraph tail) merges backward. Preserves
+    monotonic order — critical for bertalign DP.
+    """
+    if not sents:
+        return sents
+    out: list[str] = []
+    buf = ""
+    for s in sents:
+        if buf:
+            s = buf + s
+            buf = ""
+        if len(s) < min_len:
+            buf = s
+        else:
+            out.append(s)
+    if buf:
+        if out:
+            out[-1] = out[-1] + buf
+        else:
+            out.append(buf)
+    return out
+
+
 def _greedy_merge_lines(text: str) -> list[str]:
     """Group consecutive non-empty lines into ~CHUNK_TARGET-char chunks.
 
@@ -115,13 +146,23 @@ def _greedy_merge_lines(text: str) -> list[str]:
 
 
 def main() -> None:
-    if not HAN_CLEAN.exists():
+    # Prefer punctuation-restored file when present. Raw HAN_CLEAN lacks
+    # terminal punct → CHUNK_TARGET fallback slices arbitrarily. Punctuated
+    # file lets ZH_TERM_RE split at real record boundaries.
+    if HAN_PUNCT.exists():
+        src_path = HAN_PUNCT
+    elif HAN_CLEAN.exists():
+        src_path = HAN_CLEAN
+        print(f"[warn] {HAN_PUNCT} missing — falling back to {HAN_CLEAN}. "
+              f"Run han_punctuate first for better splits.")
+    else:
         raise SystemExit(f"Run normalize_han first. Missing: {HAN_CLEAN}")
-    text = HAN_CLEAN.read_text(encoding="utf-8")
+    print(f"reading: {src_path}")
+    text = src_path.read_text(encoding="utf-8")
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     sentences = []
     for para in paragraphs:
-        sentences.extend(split_classical(para))
+        sentences.extend(_merge_short(split_classical(para), MIN_HAN_LEN))
 
     HAN_SENT.parent.mkdir(parents=True, exist_ok=True)
     with HAN_SENT.open("w", encoding="utf-8") as f:

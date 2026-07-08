@@ -129,6 +129,7 @@ case "$STAGE" in
         fi
         ;;
     split)
+        run han_punctuate "uv run python -m src.03_split.han_punctuate"
         run split_han "uv run python -m src.03_split.split_han"
         run split_vi "uv run python -m src.03_split.split_vi"
         ;;
@@ -152,6 +153,7 @@ case "$STAGE" in
             echo "[skip] llm_correct (set HVB_RUN_LLM_CORRECT=1 to enable vLLM post-fix)"
             HVB_SKIP_LLM_CORRECT=1 run llm_correct_skip "uv run python -m src.02_ocr.llm_correct"
         fi
+        run han_punctuate "uv run python -m src.03_split.han_punctuate"
         run split_han "uv run python -m src.03_split.split_han"
         run split_vi "uv run python -m src.03_split.split_vi"
         run labse_embed "uv run python -m src.04_embed.labse_embed"

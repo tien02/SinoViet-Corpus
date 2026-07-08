@@ -1,5 +1,10 @@
 # Final Results — Bertalign + BGE-M3 pipeline (2026-07-07)
 
+**⚠ SUPERSEDED 2026-07-08**: Guwen-biaodian punctuator (docs/13) delivers
+30,959 pairs (5.3x baseline) with cosine mean 0.621, max 0.879. Numbers
+below reflect the pre-punctuator pipeline (200-char chunker). Retained
+for ablation/history.
+
 Production pipeline for the Đại Nam Thực Lục Hán-Việt parallel corpus.
 Supersedes the Vecalign baseline in `docs/08_results.md`.
 
