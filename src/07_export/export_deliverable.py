@@ -70,10 +70,17 @@ NUM_MARKER_RE = re.compile(r"^[\(\[]?\d")
 SINO_RESCUE_COS = float(os.environ.get("HVB_SINO_RESCUE_COS", "0.55"))
 RATIO_RESCUE_COS = float(os.environ.get("HVB_RATIO_RESCUE_COS", "0.60"))
 
-# Hard ceiling on length ratio (never rescues): drops extreme outliers from list-bracket
-# splitting (e.g. Hán 6 chars → Việt 512 chars = 85x ratio). These are false alignments
-# from bertalign's monotonic DP when fragment merging is disabled (MIN_HAN_LEN=0).
-# Set to 0 to disable. Default 15 drops ~266 obvious outliers (0.75% of pairs).
+# Low-confidence outlier filter: drops short Hán with huge Việt explanation
+# but zero phonetic overlap. Targets genuinely noisy pairs from list-bracket
+# splitting while keeping legitimate semantic translations (high cosine).
+# Condition: ratio > 10 AND han_len < 10 AND sino < 0.3
+# Set to 0 to disable. Default catches ~17 noisy pairs (0.05% of corpus).
+DROP_LOW_CONF_OUTLIERS = bool(os.environ.get("HVB_DROP_LOW_CONF", "1"))
+
+# Hard ceiling on length ratio (never rescues): drops extreme outliers
+# (e.g. Hán 15 chars → Việt 1461 chars = 97x ratio). Even high-cosine
+# semantic pairs drop if ratio exceeds this. Set to 0 to disable.
+# Default 15 catches remaining 28 extreme cases.
 MAX_EXTREME_RATIO = float(os.environ.get("HVB_MAX_EXTREME_RATIO", "15.0"))
 _SCORE_IS_SIM = os.environ.get("HVB_ALIGNER", "vecalign").lower() == "bertalign"
 
@@ -119,6 +126,7 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
     dropped_long = 0
     dropped_sino = 0
     dropped_ratio = 0
+    dropped_low_conf_outlier = 0
     dropped_extreme_ratio = 0
     dropped_han_short = 0
     dropped_num_marker = 0
@@ -148,13 +156,21 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
                 else:
                     dropped_ratio += 1
                     continue
-        # Hard ceiling: even rescued pairs drop if ratio is extreme (never rescues)
-        if MAX_EXTREME_RATIO > 0:
-            ratio = len(viet) / max(1, len(han))
-            if ratio > MAX_EXTREME_RATIO:
-                dropped_extreme_ratio += 1
-                continue
-        sino = _sino_precision(han, viet) if MIN_SINO > 0 else 0.0
+        # Low-confidence outlier filter: drop noisy short-Hán pairs with huge Việt
+        # (ratio > 10) but zero phonetic match (sino < 0.3). Keeps legitimate
+        # semantic translations and high-confidence pairs (sino >= 0.7).
+        ratio = len(viet) / max(1, len(han))
+        sino = _sino_precision(han, viet) if (MIN_SINO > 0 or DROP_LOW_CONF_OUTLIERS) else 0.0
+        if DROP_LOW_CONF_OUTLIERS and ratio > 10 and len(han) < 10 and sino < 0.3:
+            dropped_low_conf_outlier += 1
+            continue
+        # Hard ceiling on extreme ratios (never rescues)
+        if MAX_EXTREME_RATIO > 0 and ratio > MAX_EXTREME_RATIO:
+            dropped_extreme_ratio += 1
+            continue
+        # Recalculate sino if not already done (for MIN_SINO filter)
+        if MIN_SINO > 0 and sino == 0.0:
+            sino = _sino_precision(han, viet)
         if MIN_SINO > 0 and sino < MIN_SINO:
             if _SCORE_IS_SIM and cos >= SINO_RESCUE_COS:
                 rescued_sino += 1
@@ -178,6 +194,7 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
         f"dropped(empty={dropped_empty}, >{MAX_PAIR_CHARS}chars={dropped_long}"
         + (f", ratio∉[{MIN_LEN_RATIO},{MAX_LEN_RATIO}]={dropped_ratio}"
            if (MIN_LEN_RATIO > 0 or MAX_LEN_RATIO > 0) else "")
+        + (f", low_conf_outlier={dropped_low_conf_outlier}" if DROP_LOW_CONF_OUTLIERS else "")
         + (f", extreme_ratio>{MAX_EXTREME_RATIO}={dropped_extreme_ratio}" if MAX_EXTREME_RATIO > 0 else "")
         + (f", sino<{MIN_SINO}={dropped_sino}" if MIN_SINO > 0 else "")
         + (f", han<={MIN_HAN_LEN}chars={dropped_han_short}" if MIN_HAN_LEN > 0 else "")
