@@ -132,9 +132,15 @@ def main() -> None:
     _al.detect_lang = _fixed_detect
 
     print(f"embedding + aligning with {EMBED_MODEL} ...")
+    # max_align caps bead size per side. Default 5 allows 5-5 beads which
+    # over-groups atomic Hán short sentences ↔ single Việt fragment when
+    # _merge_short is enabled. Now that split_han emits atomic clauses
+    # (MIN_HAN_LEN=0 + BLACKLIST_NO_PERIOD_AFTER filter), default 5 is
+    # safe — bertalign DP picks smallest bead per local evidence.
+    max_align = int(os.environ.get("HVB_BERTALIGN_MAX_ALIGN", "5"))
     aligner = Bertalign(
         src_txt, tgt_txt,
-        max_align=5,
+        max_align=max_align,
         top_k=3,
         win=5,
         skip=-0.1,

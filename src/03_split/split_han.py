@@ -18,6 +18,14 @@ TERM_CHARS = "。！？；!?;"
 ANNOT_OPEN = "〈「『（"
 ANNOT_CLOSE = "〉」』）"
 
+# Chinese numeral list item markers (一。二。三。etc.) that often appear inside
+# brackets to indicate enumerated regulations or name lists. When we see
+# multiple such markers inside a single bracket, split each into its own
+# sentence to prevent bertalign from merging the entire list into one bead.
+# Pattern: SINGLE Chinese numeral (一-十) or arabic (1-10) followed by 。、
+LIST_MARKER_RE = re.compile(r"([一二三四五六七八九十1-9])[。、]")
+LIST_MARKERS = set("一二三四五六七八九十") | set("123456789")
+
 # Fallback for imperial-edict / decree blocks with ZERO terminal punctuation
 # (378 such paragraphs in the corpus, median 8 568 chars). Splits the block
 # on `\n` and greedily re-merges consecutive lines into sentence-sized
@@ -29,7 +37,13 @@ CHUNK_TARGET = 200
 # characters (議, 賞, 嗣), yielding many <10-char fragments that lack
 # enough semantic signal for BGE-M3. Merge fragments below MIN_HAN_LEN
 # into the following sentence (or previous, at paragraph end).
-MIN_HAN_LEN = int(__import__("os").environ.get("HVB_MIN_HAN_LEN", "15"))
+#
+# 2026-07-19: Default lowered 15→0. Punctuator now filters noise via
+# BLACKLIST_NO_PERIOD_AFTER (han_punctuate.py). Old merge created
+# PARTIAL alignment pairs — multi-clause Hán row matched against
+# single-clause Việt row. With merge disabled, each Hán clause gets
+# its own row → atomic 1-sentence-per-row alignment.
+MIN_HAN_LEN = int(__import__("os").environ.get("HVB_MIN_HAN_LEN", "0"))
 
 
 def split_classical(text: str) -> list[str]:
@@ -145,6 +159,91 @@ def _greedy_merge_lines(text: str) -> list[str]:
     return chunks
 
 
+def _split_list_brackets(sentences: list[str]) -> list[str]:
+    """Split sentences containing multi-item list brackets like 〈 一。... 二。... 〉.
+
+    When a bracket contains multiple list markers (一。二。三。etc.),
+    split each marker into a separate sentence to prevent bertalign from
+    merging the entire list into one oversized bead.
+
+    Handles two bracket formats:
+    1. Separate brackets per item: 〈 一。... 〉〈 二。... 〉
+    2. Single bracket with all items: 〈 一。... 二。... 三。〉
+    """
+    result = []
+    for sent in sentences:
+        # Find all brackets in this sentence
+        bracket_spans = []
+        stack = []
+        for i, c in enumerate(sent):
+            if c in ANNOT_OPEN:
+                stack.append((c, i))
+            elif c in ANNOT_CLOSE and stack:
+                open_char, open_i = stack.pop()
+                if ANNOT_OPEN.index(open_char) == ANNOT_CLOSE.index(c):
+                    bracket_spans.append((open_i, i + 1))
+
+        # Check if any bracket has multiple list markers
+        has_multi_list = False
+        multi_bracket_idx = -1
+        for idx, (start, end) in enumerate(bracket_spans):
+            bracket_content = sent[start:end]
+            markers = LIST_MARKER_RE.findall(bracket_content)
+            unique_markers = set(m[0] for m in markers)
+            # Need either (a) >=2 different markers OR (b) >=5 repeats of same marker
+            if len(unique_markers) >= 2 or (len(markers) >= 5 and len(unique_markers) >= 1):
+                has_multi_list = True
+                multi_bracket_idx = idx
+                break
+
+        if not has_multi_list:
+            result.append(sent)
+            continue
+
+        # Handle the single-bracket-all-items format
+        # Strategy: extract bracket content, split by markers, wrap each item
+        start, end = bracket_spans[multi_bracket_idx]
+        bracket_content = sent[start:end]
+        before_bracket = sent[:start]
+        after_bracket = sent[end:]
+
+        # Split bracket content by markers
+        items = []
+        current = []
+        i = 0
+        while i < len(bracket_content):
+            match = LIST_MARKER_RE.search(bracket_content, i)
+            if not match:
+                current.append(bracket_content[i:])
+                break
+            # Found a marker - emit current item, start new one
+            marker_end = match.end()
+            current.append(bracket_content[i:marker_end])
+            item = "".join(current).strip()
+            if item:
+                items.append(item)
+            current = []
+            i = marker_end
+
+        # Handle remaining content
+        if current:
+            remainder = "".join(current).strip()
+            if remainder:
+                items.append(remainder)
+
+        # Reconstruct: each item gets wrapped with 〈 ... 〉
+        # If there's text before/after the bracket, keep it
+        for item in items:
+            # Skip empty items
+            if not item or len(item) < 3:
+                continue
+            # Re-wrap with brackets
+            reconstructed = f"{before_bracket}〈 {item} 〉{after_bracket}".strip()
+            result.append(reconstructed)
+
+    return result
+
+
 def main() -> None:
     # Prefer punctuation-restored file when present. Raw HAN_CLEAN lacks
     # terminal punct → CHUNK_TARGET fallback slices arbitrarily. Punctuated
@@ -163,6 +262,8 @@ def main() -> None:
     sentences = []
     for para in paragraphs:
         sentences.extend(_merge_short(split_classical(para), MIN_HAN_LEN))
+    # Post-process: split multi-item list brackets into separate sentences
+    sentences = _split_list_brackets(sentences)
 
     HAN_SENT.parent.mkdir(parents=True, exist_ok=True)
     with HAN_SENT.open("w", encoding="utf-8") as f:

@@ -37,6 +37,12 @@ TERM_CHARS = "。！？；"
 # labels — noisy on Wikisource text without paired glyphs upstream.
 KEEP_LABELS = {"。", "，", "：", "；", "？", "！", "、"}
 
+# Characters that never legitimately end a sentence — guwen-biaodian
+# over-predicts 。 after these. Drop the 。 when previous char matches.
+# 嗣 (conjunction "furthermore/then") — always starts a new clause,
+# never closes one. 100% noise rate in 56 occurrences.
+BLACKLIST_NO_PERIOD_AFTER = {"嗣"}
+
 
 def _paragraph_windows(text: str, window: int, overlap: int) -> list[tuple[int, str]]:
     """Return (offset, substring) windows over a stripped-newline paragraph.
@@ -144,6 +150,8 @@ def punctuate_paragraph(tokenizer, model, device, torch, id2label, para: str) ->
     for ch, lab in zip(flat_text, merged):
         out_chars.append(ch)
         if lab in KEEP_LABELS:
+            if lab == "。" and ch in BLACKLIST_NO_PERIOD_AFTER:
+                continue
             out_chars.append(lab)
     return "".join(out_chars)
 

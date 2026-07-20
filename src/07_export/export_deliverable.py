@@ -52,6 +52,16 @@ MIN_SINO = float(os.environ.get("HVB_MIN_SINO", "0.15"))
 MIN_LEN_RATIO = float(os.environ.get("HVB_MIN_LEN_RATIO", "0.5"))
 MAX_LEN_RATIO = float(os.environ.get("HVB_MAX_LEN_RATIO", "8.0"))
 
+# Ultra-short Hán filter: drop Hán <=4 chars (punctuator noise fragments like
+# 夫。撫。三。). These are almost always false alignments with score ~0.5.
+# Set to 0 to disable. Default 4 catches ~87 noise pairs in Phase 1 data.
+MIN_HAN_LEN = int(os.environ.get("HVB_MIN_HAN_LEN", "4"))
+
+# Page-margin artifact filter: drop Việt starting with `1)`, `2)`, `(1)`, `[1]`,
+# etc. (docx/OCR page furniture). These have score ~0.5 and are not real
+# translations. Set to 0 to disable. Default catches ~119 artifacts in Phase 1.
+NUM_MARKER_RE = re.compile(r"^[\(\[]?\d")
+
 # Rescue policy: if embedder cosine is high, don't drop a pair for weak sino or
 # out-of-range length ratio. Prevents false positives from proxy filters when
 # semantic embedding is confident (e.g. Hán 千載 → Việt "nghìn năm" — no
@@ -59,6 +69,12 @@ MAX_LEN_RATIO = float(os.environ.get("HVB_MAX_LEN_RATIO", "8.0"))
 # Only applies when score is cosine similarity (bertalign). Set to 1.1 to disable.
 SINO_RESCUE_COS = float(os.environ.get("HVB_SINO_RESCUE_COS", "0.55"))
 RATIO_RESCUE_COS = float(os.environ.get("HVB_RATIO_RESCUE_COS", "0.60"))
+
+# Hard ceiling on length ratio (never rescues): drops extreme outliers from list-bracket
+# splitting (e.g. Hán 6 chars → Việt 512 chars = 85x ratio). These are false alignments
+# from bertalign's monotonic DP when fragment merging is disabled (MIN_HAN_LEN=0).
+# Set to 0 to disable. Default 15 drops ~266 obvious outliers (0.75% of pairs).
+MAX_EXTREME_RATIO = float(os.environ.get("HVB_MAX_EXTREME_RATIO", "15.0"))
 _SCORE_IS_SIM = os.environ.get("HVB_ALIGNER", "vecalign").lower() == "bertalign"
 
 _CONVERTER = None
@@ -103,6 +119,9 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
     dropped_long = 0
     dropped_sino = 0
     dropped_ratio = 0
+    dropped_extreme_ratio = 0
+    dropped_han_short = 0
+    dropped_num_marker = 0
     rescued_ratio = 0
     rescued_sino = 0
     pair_id = 1
@@ -129,6 +148,12 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
                 else:
                     dropped_ratio += 1
                     continue
+        # Hard ceiling: even rescued pairs drop if ratio is extreme (never rescues)
+        if MAX_EXTREME_RATIO > 0:
+            ratio = len(viet) / max(1, len(han))
+            if ratio > MAX_EXTREME_RATIO:
+                dropped_extreme_ratio += 1
+                continue
         sino = _sino_precision(han, viet) if MIN_SINO > 0 else 0.0
         if MIN_SINO > 0 and sino < MIN_SINO:
             if _SCORE_IS_SIM and cos >= SINO_RESCUE_COS:
@@ -136,6 +161,14 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
             else:
                 dropped_sino += 1
                 continue
+        # Ultra-short Hán filter (punctuator noise fragments)
+        if MIN_HAN_LEN > 0 and len(han) <= MIN_HAN_LEN:
+            dropped_han_short += 1
+            continue
+        # Page-margin artifact filter (Việt starts with number marker)
+        if NUM_MARKER_RE and NUM_MARKER_RE.match(viet.lstrip()):
+            dropped_num_marker += 1
+            continue
         rows.append((pair_id, han, viet, sino))
         pair_id += 1
     if not rows:
@@ -145,7 +178,10 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
         f"dropped(empty={dropped_empty}, >{MAX_PAIR_CHARS}chars={dropped_long}"
         + (f", ratio∉[{MIN_LEN_RATIO},{MAX_LEN_RATIO}]={dropped_ratio}"
            if (MIN_LEN_RATIO > 0 or MAX_LEN_RATIO > 0) else "")
+        + (f", extreme_ratio>{MAX_EXTREME_RATIO}={dropped_extreme_ratio}" if MAX_EXTREME_RATIO > 0 else "")
         + (f", sino<{MIN_SINO}={dropped_sino}" if MIN_SINO > 0 else "")
+        + (f", han<={MIN_HAN_LEN}chars={dropped_han_short}" if MIN_HAN_LEN > 0 else "")
+        + (f", num_marker={dropped_num_marker}" if NUM_MARKER_RE else "")
         + ")"
     )
     if _SCORE_IS_SIM and (rescued_ratio or rescued_sino):

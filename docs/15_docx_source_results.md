@@ -125,7 +125,33 @@ Source script:
 src/03_split/docx_to_vi_sentences.py     docx → vi_sentences.jsonl
 ```
 
-## 7. Open work
+## 7. Known caveats — manually audited bad pairs
+
+Spot-check (2026-07-19) of 63 tail candidates (`sino<0.20 ∧ len_ratio<1.5
+∧ pair_id>30000`) labeled 8 pairs as **wrong** (different content /
+different names / contradicts Hán). Not dropped from deliverable —
+documented here for transparency. Real fix is per-clause alignment
+(currently out of scope; bertalign produces 1-bead-per-Hán-segment
+which over-abbreviates long mandarinate lists).
+
+| pair_id | Issue | Hán head | Việt |
+|---------|-------|----------|------|
+| 31574 | 2-word fragment | `其父旣蒙旻賞,尙在同居,擬應停給。` | `đình cấp.` |
+| 31830 | Wrong tax stations | Hán: 宣威/東川/安樂/福禮 | V: Phú Mỹ/Mỹ Thu |
+| 32202 | Wrong person | Hán: 阮公義/何文亨 | V: Trí Phú |
+| 32248 | Contradicts Hán | Hán: do NOT set up school | V: DO set up |
+| 32436 | Different person | Hán: wife of 逆雲, sister of 瑾 | V: Thị Nhị, sister of Cận |
+| 32499 | Different topic | Hán: teaching youngsters | V: lawsuits/quarrels |
+| 32645 | Numbered marker | Hán: ritual character | V: `1)không thấy nói đến.` |
+| 32665 | Different topic | Hán: west border defense | V: revenue ministry |
+
+Audit also labeled 10/63 as CORRECT (15.9%) and 45/63 as PARTIAL
+(71.4% — Việt translates only opening clause of multi-clause Hán).
+Low-sino bucket is therefore NOT bulk garbage — confirms docs/12 §2
+hypothesis that pure Việt semantic translation (`千載` → "nghìn năm")
+breaks phonetic overlap without breaking translation.
+
+## 8. Open work
 
 Same bottlenecks remain (from docs/12 §"Open work"):
 
