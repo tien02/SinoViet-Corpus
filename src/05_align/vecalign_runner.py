@@ -31,17 +31,19 @@ from src.utils.config import (  # noqa: E402
 
 
 def prep_vecalign_input(
-    sent_path: Path, tmp_file: Path
-) -> tuple[int, list[int], list[str]]:
+    sent_path: Path, tmp_file: Path, is_vi: bool = False
+) -> tuple[int, list[int], list[str], list[dict] | None]:
     """Write vecalign-format file (1 unique sentence per line, len >= 3).
 
-    Returns (n_written, kept_indices, unique_sentences).
+    Returns (n_written, kept_indices, unique_sentences, metadata).
     kept_indices maps new line idx -> original sentence idx in jsonl.
     unique_sentences is the deduped list (indexed by new line idx).
+    metadata: for VI, list of {tap, page}; None for Han.
     """
     seen: set[str] = set()
     kept_indices: list[int] = []
     unique_sentences: list[str] = []
+    metadata: list[dict] | None = [] if is_vi else None
     with tmp_file.open("w", encoding="utf-8") as fout, sent_path.open(
         "r", encoding="utf-8"
     ) as fin:
@@ -56,7 +58,9 @@ def prep_vecalign_input(
             fout.write(text + "\n")
             kept_indices.append(orig_idx)
             unique_sentences.append(text)
-    return len(kept_indices), kept_indices, unique_sentences
+            if is_vi:
+                metadata.append({"tap": obj.get("tap"), "page": obj.get("page")})
+    return len(kept_indices), kept_indices, unique_sentences, metadata
 
 
 def parse_vecalign_output(out_path: Path) -> list[dict]:
@@ -105,8 +109,8 @@ def main() -> None:
     src_file = tmp_dir / "han.txt"
     tgt_file = tmp_dir / "vi.txt"
 
-    src_n, src_kept, src_unique = prep_vecalign_input(HAN_SENT, src_file)
-    tgt_n, tgt_kept, tgt_unique = prep_vecalign_input(VI_SENT, tgt_file)
+    src_n, src_kept, src_unique, _ = prep_vecalign_input(HAN_SENT, src_file, is_vi=False)
+    tgt_n, tgt_kept, tgt_unique, tgt_metadata = prep_vecalign_input(VI_SENT, tgt_file, is_vi=True)
     print(f"src={src_n:,} tgt={tgt_n:,}")
 
     # Slice embeddings to match deduped files (vecalign assumes 1:1 line:embed).
@@ -163,6 +167,10 @@ def main() -> None:
             # Map deduped line idx back to original jsonl idx.
             src_orig = [src_kept[i] for i in src_lines if 0 <= i < len(src_kept)]
             tgt_orig = [tgt_kept[i] for i in tgt_lines if 0 <= i < len(tgt_kept)]
+            # Extract tap from first tgt sentence (all in a pair share tap)
+            tap = None
+            if tgt_lines and 0 <= tgt_lines[0] < len(tgt_metadata):
+                tap = tgt_metadata[tgt_lines[0]].get("tap")
             row = {
                 "src_idx": src_orig,
                 "tgt_idx": tgt_orig,
@@ -170,6 +178,8 @@ def main() -> None:
                 "tgt": tgt_text,
                 "score": p["score"],
             }
+            if tap:
+                row["tap"] = tap
             line = json.dumps(row, ensure_ascii=False) + "\n"
             # Vecalign score = cosine distance (lower = better).
             if p["score"] < ALIGN_MAX_DIST:

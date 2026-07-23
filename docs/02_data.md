@@ -85,7 +85,7 @@ Wiki headers markers (sẽ bị strip ở Stage 1a):
 
 ### Stage 5: Aligned pairs
 
-**`data/aligned/pairs.jsonl`** — một cặp per line:
+**`data/aligned/pairs.jsonl`** — một cặp per line, grouped by Vietnamese volume (tap):
 
 ```json
 {
@@ -93,7 +93,8 @@ Wiki headers markers (sẽ bị strip ở Stage 1a):
   "tgt_idx": [58],
   "src": "紹治四年三月十一日",
   "tgt": "Năm Thiệu Trị thứ tư, ngày 11 tháng 3",
-  "score": 0.823
+  "score": 0.823,
+  "tap": "tap4"
 }
 ```
 
@@ -104,9 +105,12 @@ Wiki headers markers (sẽ bị strip ở Stage 1a):
   "tgt_idx": [120, 121, 122],
   "src": "...",
   "tgt": "...",
-  "score": 0.71
+  "score": 0.71,
+  "tap": "tap5"
 }
 ```
+
+**Lưu ý:** Field `tap` được thêm từ stage 5 (read từ vi_sentences.jsonl) và được dùng để tách output thành từng tập riêng ở stage 7.
 
 **Filter:** Pairs với `score < 0.5` bị drop (`ALIGN_MIN_SCORE` trong config).
 
@@ -139,23 +143,26 @@ Wiki headers markers (sẽ bị strip ở Stage 1a):
 }
 ```
 
-### Stage 7: Final corpus
+### Stage 7: Deliverable per-tap
 
-**`data/final/hvb_corpus.jsonl`:**
-```json
-{
-  "src": "紹治四年三月十一日",
-  "tgt": "Năm Thiệu Trị thứ tư, ngày 11 tháng 3",
-  "src_idx": [42],
-  "tgt_idx": [58],
-  "labse_score": 0.823,
-  "entities": [
-    {"han": "紹治", "vi": "Thiệu Trị", "score": 1.0}
-  ]
-}
+Alignment output được tách thành từng tập Việt (tap4, tap5, tap6) với định dạng yêu cầu:
+
+**`data/final/{prefix}_tap4_raw.txt`** — Raw OCR concatenated cho tap 4
+**`data/final/{prefix}_tap4_parallel.tsv`** — Aligned pairs:
+```
+pair_id	han_sentence	viet_sentence	sino
+1	紹治四年三月十一日	Năm Thiệu Trị thứ tư, ngày 11 tháng 3	thieu tri
+2	上諭	Chỉ dụ	thuong nho
+...
 ```
 
-### Stage 7: Eval reports
+**`data/final/{prefix}_tap4_parallel.xlsx`** — Same data in Excel format
+
+Tương tự cho tap5, tap6.
+
+Cấu hình prefix via `HVB_DELIVERABLE_PREFIX` (mã số sinh viên).
+
+### Stage 7: Eval reports (deprecated)
 
 **`data/final/eval/auto_metrics.json`:**
 ```json

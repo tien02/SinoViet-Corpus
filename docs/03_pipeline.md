@@ -23,18 +23,13 @@ Stage 4: embed
 Stage 5: align
   └── vecalign_runner      (sentences + embeds -> pairs.jsonl)
 
-Stage 6: ner
+Stage 6: ner (deprecated)
   ├── 6a ner_han           (han_sentences -> entities_han.jsonl)
   ├── 6b ner_vi            (vi_sentences -> entities_vi.jsonl)
   └── 6c ner_bridge        (match entities across pairs)
 
-Stage 7: eval
-  ├── 7a auto_metrics      (LaBSE/COMET/BERTScore/BLEU)
-  ├── 7b flores_sanity     (FLORES-200 zh-vi)
-  ├── 7c round_trip        (Viet -> Han via LLM)
-  ├── 7d holdout_mt        (train MarianMT, eval hold-out)
-  ├── 7e llm_ensemble      (Qwen2.5-7B-Instruct judge, mean-only với 1 model)
-  └── export_corpus        (final hvb_corpus.jsonl)
+Stage 7: export (per-tap deliverable)
+  └── export_deliverable   (pairs.jsonl grouped by tap -> {prefix}_tap{4,5,6}_{raw.txt,parallel.tsv,.xlsx})
 ```
 
 ## Stage 1a: normalize_han
@@ -121,6 +116,57 @@ uv run python -m src.01_prep.normalize_han
 - Rotated pages → giữ `use_angle_cls=True`
 
 **Verify:** Spot-check 5-10 pages random so với PDF gốc. Kỳ vọng CER 8-15% (sau Stage 2b xuống < 5%).
+
+## Stage 5: vecalign_runner (per-tap alignment)
+
+**File:** `src/05_align/vecalign_runner.py`
+
+**Input:**
+- `data/interim/han_sentences.jsonl` (all Han sentences)
+- `data/interim/vi_sentences.jsonl` (all Viet sentences with `tap` field)
+- `data/interim/han_embeds.npy` (LaBSE embeddings)
+- `data/interim/vi_embeds.npy` (LaBSE embeddings)
+
+**Output:** `data/aligned/pairs.jsonl` — one pair per line, now with `tap` field:
+
+```json
+{
+  "src_idx": [42],
+  "tgt_idx": [58],
+  "src": "紹治四年三月十一日",
+  "tgt": "Năm Thiệu Trị thứ tư, ngày 11 tháng 3",
+  "score": 0.823,
+  "tap": "tap4"
+}
+```
+
+**Key change:** Field `tap` (Vietnamese volume) được extract từ VI_SENT metadata và propagate thành field `tap` trong pairs.jsonl. Được dùng để tách output per-tap ở stage 7.
+
+**Logic:**
+1. Load sentences, dedupe (1 unique sentence per line)
+2. Track metadata: for VI side, store `{"tap": "tap4", "page": 5}` per sentence
+3. Slice embeddings to deduped sentences
+4. Call `vecalign.py` subprocess with sliced embeds
+5. Parse Vecalign output format `: [score] [src_idx] [tgt_idx]`
+6. Expand range indices (`0--2` → `[0,1,2]`)
+7. Join text từ sentences, extract first `tgt_idx`'s `tap` field
+8. Add `tap` to pairs object
+9. Write to `pairs.jsonl` (filter by score threshold)
+
+**Vecalign output format:**
+```
+: 1.0  0  0      (sentence 0 = sentence 0, score 1.0)
+: 0.83 1  1
+: 0.71 2--3 2    (Han sentences 2,3 = Viet sentence 2)
+```
+
+**Verify:**
+- Score distribution: mode ở 0.7-0.9 (good aligns)
+- 1-1 alignments > 80%
+- All pairs có `tap` field
+- tap4 pairs > tap5 > tap6 (proportional to input size)
+
+**Performance:** ~1-2 giờ.
 
 ## Stage 2b: llm_correct
 
@@ -303,23 +349,47 @@ uv run python -m src.02_ocr.llm_correct --model Qwen/Qwen2.5-7B-Instruct
 
 Chi tiết methodology xem [`04_eval.md`](04_eval.md).
 
-## Stage 8: export_corpus
+## Stage 7: export_deliverable (per-tap)
 
-**File:** `src/07_eval/export_corpus.py`
+**File:** `src/07_export/export_deliverable.py`
 
-**Input:** `data/aligned/pairs.jsonl` + `data/aligned/entities.jsonl`
+**Input:**
+- `data/aligned/pairs.jsonl` (with `tap` field từ stage 5)
+- `data/interim/vi_ocr_raw/` or `vi_ocr_corrected/` (per-page OCR files)
 
-**Output:** `data/final/hvb_corpus.jsonl`
+**Output:** Separate deliverables for each Vietnamese tap (volume):
+- `data/final/{prefix}_tap4_raw.txt` — concatenated raw OCR for tap4
+- `data/final/{prefix}_tap4_parallel.tsv` — aligned pairs (TSV format)
+- `data/final/{prefix}_tap4_parallel.xlsx` — aligned pairs (Excel format)
+- (tương tự cho tap5, tap6)
 
-**Logic:** Merge pairs với entities (lookup bằng `(src_idx, tgt_idx)` key). Final record schema:
-```json
-{
-  "src": "...", "tgt": "...",
-  "src_idx": [42], "tgt_idx": [58],
-  "labse_score": 0.82,
-  "entities": [{"han": "...", "vi": "...", "score": 1.0}]
-}
+**Schema (TSV/XLSX):**
 ```
+pair_id	han_sentence	viet_sentence	sino
+1	紹治四年三月十一日	Năm Thiệu Trị thứ tư, ngày 11 tháng 3	thieu tri
+2	上諭	Chỉ dụ	thuong nho
+```
+
+**Logic:**
+1. Load pairs từ `pairs.jsonl`
+2. Group by `tap` field
+3. Filter pairs bằng Sino-Viet precision, length ratio, outlier heuristics
+4. Assign `pair_id` per-tap (1-indexed)
+5. For each tap:
+   - Concatenate per-page OCR vào `{prefix}_{tap}_raw.txt`
+   - Write pairs thành TSV vào `{prefix}_{tap}_parallel.tsv`
+   - Write pairs thành Excel vào `{prefix}_{tap}_parallel.xlsx`
+
+**Cấu hình:**
+- `HVB_DELIVERABLE_PREFIX` = mã số sinh viên (prefix cho output filenames)
+- `HVB_MIN_SINO` = threshold phonetic precision (default 0.15)
+- `HVB_MAX_PAIR_CHARS` = drop pairs nếu quá dài (default 2000)
+
+**Verify:**
+- tap4 pairs → `{prefix}_tap4_raw.txt`, `{prefix}_tap4_parallel.{tsv,xlsx}`
+- tap5 pairs → `{prefix}_tap5_*.{txt,tsv,xlsx}`
+- tap6 pairs → `{prefix}_tap6_*.{txt,tsv,xlsx}`
+- Only Vietnamese taps (not Han side)
 
 ## Checkpoint resume
 

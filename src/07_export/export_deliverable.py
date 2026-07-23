@@ -1,12 +1,13 @@
-"""Stage 7 (export): build the course deliverable files from aligned pairs.
+"""Stage 7 (export): build per-tap deliverable files from aligned pairs.
 
-Produces the three files the course spec asks for:
-  {prefix}_raw.txt       - raw OCR concatenated (tap4 + tap5 + tap6)
-  {prefix}_parallel.tsv  - [pair_id]\\t[han_sentence]\\t[viet_sentence]\\t[sino]
-  {prefix}_parallel.xlsx - same columns in Excel
+Produces separate output for each Vietnamese volume (tap):
+  {prefix}_{tap}_raw.txt       - raw OCR for that tap
+  {prefix}_{tap}_parallel.tsv  - [pair_id]\\t[han_sentence]\\t[viet_sentence]\\t[sino]
+  {prefix}_{tap}_parallel.xlsx - same columns in Excel
 
-Reads only pairs.jsonl (align output) and the raw OCR txt files. Prefix is set
-via HVB_DELIVERABLE_PREFIX (mã số sinh viên).
+Reads pairs.jsonl (align output, now with tap field) and per-page raw OCR files.
+Prefix is set via HVB_DELIVERABLE_PREFIX (mã số sinh viên).
+Only outputs Vietnamese taps (tap4, tap5, tap6).
 
 Optional Sino-Viet phonetic filter (HVB_MIN_SINO, default 0 = off): drops pairs
 whose Han→Sino-Viet pronunciation has <threshold lexical overlap with the
@@ -118,10 +119,15 @@ def _flatten(text: str) -> str:
     return " ".join(text.split())
 
 
-def load_pairs() -> list[tuple[int, str, str, float]]:
+def load_pairs() -> dict[str | None, list[tuple[int, str, str, float]]]:
+    """Load pairs grouped by tap (Vietnamese volume).
+
+    Returns dict[tap_name, list of (pair_id, han, viet, sino)].
+    tap_name = 'tap4', 'tap5', etc. or None for pairs without tap info.
+    """
     if not PAIRS_JSONL.exists():
         raise SystemExit(f"Missing {PAIRS_JSONL}. Run the align stage first.")
-    rows: list[tuple[int, str, str, float]] = []
+    rows_by_tap: dict[str | None, list[tuple[int, str, str, float]]] = {}
     dropped_empty = 0
     dropped_long = 0
     dropped_sino = 0
@@ -132,7 +138,6 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
     dropped_num_marker = 0
     rescued_ratio = 0
     rescued_sino = 0
-    pair_id = 1
     for line in PAIRS_JSONL.open(encoding="utf-8"):
         line = line.strip()
         if not line:
@@ -156,19 +161,14 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
                 else:
                     dropped_ratio += 1
                     continue
-        # Low-confidence outlier filter: drop noisy short-Hán pairs with huge Việt
-        # (ratio > 10) but zero phonetic match (sino < 0.3). Keeps legitimate
-        # semantic translations and high-confidence pairs (sino >= 0.7).
         ratio = len(viet) / max(1, len(han))
         sino = _sino_precision(han, viet) if (MIN_SINO > 0 or DROP_LOW_CONF_OUTLIERS) else 0.0
         if DROP_LOW_CONF_OUTLIERS and ratio > 10 and len(han) < 10 and sino < 0.3:
             dropped_low_conf_outlier += 1
             continue
-        # Hard ceiling on extreme ratios (never rescues)
         if MAX_EXTREME_RATIO > 0 and ratio > MAX_EXTREME_RATIO:
             dropped_extreme_ratio += 1
             continue
-        # Recalculate sino if not already done (for MIN_SINO filter)
         if MIN_SINO > 0 and sino == 0.0:
             sino = _sino_precision(han, viet)
         if MIN_SINO > 0 and sino < MIN_SINO:
@@ -177,20 +177,27 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
             else:
                 dropped_sino += 1
                 continue
-        # Ultra-short Hán filter (punctuator noise fragments)
         if MIN_HAN_LEN > 0 and len(han) <= MIN_HAN_LEN:
             dropped_han_short += 1
             continue
-        # Page-margin artifact filter (Việt starts with number marker)
         if NUM_MARKER_RE and NUM_MARKER_RE.match(viet.lstrip()):
             dropped_num_marker += 1
             continue
-        rows.append((pair_id, han, viet, sino))
-        pair_id += 1
-    if not rows:
+        tap = p.get("tap")  # Group by tap (Vietnamese volume)
+        if tap not in rows_by_tap:
+            rows_by_tap[tap] = []
+        rows_by_tap[tap].append((han, viet, sino))
+
+    if not rows_by_tap:
         raise SystemExit(f"No usable pairs in {PAIRS_JSONL}.")
+
+    # Assign pair_ids per tap
+    for tap in rows_by_tap:
+        rows_by_tap[tap] = [(i + 1, han, viet, sino) for i, (han, viet, sino) in enumerate(rows_by_tap[tap])]
+
+    total_pairs = sum(len(rows) for rows in rows_by_tap.values())
     print(
-        f"  pairs kept={len(rows):,} "
+        f"  pairs kept={total_pairs:,} by tap={list(rows_by_tap.keys())} "
         f"dropped(empty={dropped_empty}, >{MAX_PAIR_CHARS}chars={dropped_long}"
         + (f", ratio∉[{MIN_LEN_RATIO},{MAX_LEN_RATIO}]={dropped_ratio}"
            if (MIN_LEN_RATIO > 0 or MAX_LEN_RATIO > 0) else "")
@@ -206,55 +213,71 @@ def load_pairs() -> list[tuple[int, str, str, float]]:
             f"  rescued by cosine: ratio={rescued_ratio} (cos≥{RATIO_RESCUE_COS}), "
             f"sino={rescued_sino} (cos≥{SINO_RESCUE_COS})"
         )
-    return rows
+    return rows_by_tap
 
 
-def write_raw() -> None:
-    """Concatenate the per-tap raw OCR into one {prefix}_raw.txt."""
-    taps = sorted(
-        f for f in VI_OCR_RAW_DIR.glob("tap*.txt") if "_page_" not in f.name
-    )
-    if not taps:
-        print(f"  WARN: no per-tap OCR in {VI_OCR_RAW_DIR}, skipping raw.txt")
+def write_raw(tap: str | None) -> None:
+    """Write raw OCR for a specific Vietnamese tap."""
+    if not tap:
+        print(f"  WARN: skipping raw.txt for pairs without tap info")
+        return
+    raw_file = DELIVERABLE_RAW.parent / f"{DELIVERABLE_PREFIX}_{tap}_raw.txt"
+    # Concatenate per-page OCR for this tap
+    pages = sorted(VI_OCR_RAW_DIR.glob(f"{tap}_page_*.txt")) if VI_OCR_RAW_DIR.exists() else []
+    if not pages:
+        # Fallback to combined tap file
+        combined = VI_OCR_RAW_DIR / f"{tap}.txt" if VI_OCR_RAW_DIR.exists() else None
+        if combined and combined.exists():
+            raw_file.write_text(combined.read_text(encoding="utf-8"), encoding="utf-8")
+            print(f"  raw   -> {raw_file}")
         return
     parts = []
-    for t in taps:
-        parts.append(f"===== {t.stem} =====")
-        parts.append(t.read_text(encoding="utf-8").rstrip("\n"))
-    DELIVERABLE_RAW.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
-    print(f"  raw   -> {DELIVERABLE_RAW} ({len(taps)} tập)")
+    for p in pages:
+        parts.append(p.read_text(encoding="utf-8").rstrip("\n"))
+    raw_file.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
+    print(f"  raw   -> {raw_file} ({len(pages)} pages)")
 
 
-def write_tsv(rows: list[tuple[int, str, str, float]]) -> None:
-    with DELIVERABLE_TSV.open("w", encoding="utf-8", newline="") as f:
+def write_tsv(tap: str | None, rows: list[tuple[int, str, str, float]]) -> None:
+    if not tap:
+        print(f"  WARN: skipping TSV for pairs without tap info")
+        return
+    tsv_file = DELIVERABLE_TSV.parent / f"{DELIVERABLE_PREFIX}_{tap}_parallel.tsv"
+    with tsv_file.open("w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
         w.writerow(["pair_id", "han_sentence", "viet_sentence", "sino"])
         w.writerows(rows)
-    print(f"  tsv   -> {DELIVERABLE_TSV} ({len(rows):,} pairs)")
+    print(f"  tsv   -> {tsv_file} ({len(rows):,} pairs)")
 
 
-def write_xlsx(rows: list[tuple[int, str, str, float]]) -> None:
+def write_xlsx(tap: str | None, rows: list[tuple[int, str, str, float]]) -> None:
+    if not tap:
+        print(f"  WARN: skipping XLSX for pairs without tap info")
+        return
     try:
         import pandas as pd
     except ImportError:
         raise SystemExit("pandas required for xlsx export (uv add pandas openpyxl).")
+    xlsx_file = DELIVERABLE_XLSX.parent / f"{DELIVERABLE_PREFIX}_{tap}_parallel.xlsx"
     df = pd.DataFrame(
         rows, columns=["pair_id", "han_sentence", "viet_sentence", "sino"]
     )
     try:
-        df.to_excel(DELIVERABLE_XLSX, index=False, engine="openpyxl")
+        df.to_excel(xlsx_file, index=False, engine="openpyxl")
     except ImportError:
         raise SystemExit("openpyxl required for xlsx export (uv add openpyxl).")
-    print(f"  xlsx  -> {DELIVERABLE_XLSX} ({len(rows):,} pairs)")
+    print(f"  xlsx  -> {xlsx_file} ({len(rows):,} pairs)")
 
 
 def main() -> None:
     DELIVERABLE_RAW.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Exporting deliverable (prefix='{DELIVERABLE_PREFIX}')")
-    rows = load_pairs()
-    write_raw()
-    write_tsv(rows)
-    write_xlsx(rows)
+    print(f"Exporting deliverable per-tap (prefix='{DELIVERABLE_PREFIX}')")
+    rows_by_tap = load_pairs()
+    for tap in sorted(rows_by_tap.keys()):
+        print(f"\n{tap}:")
+        write_raw(tap)
+        write_tsv(tap, rows_by_tap[tap])
+        write_xlsx(tap, rows_by_tap[tap])
 
 
 if __name__ == "__main__":
