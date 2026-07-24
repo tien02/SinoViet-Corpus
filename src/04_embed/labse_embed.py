@@ -12,6 +12,7 @@ Output: data/interim/{han,vi}_embeds.npy (N x D float32, D=1024 for BGE-M3)
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -138,10 +139,16 @@ def _embed_qwen3(texts: list[str], model_name: str) -> np.ndarray:
 
 
 def main() -> None:
-    for label, sent_path, out_path in [
+    side = os.environ.get("HVB_EMBED_SIDE", "both").lower()
+    jobs = [
         ("han", HAN_SENT, HAN_EMBEDS),
         ("vi", VI_SENT, VI_EMBEDS),
-    ]:
+    ]
+    if side in ("han", "vi"):
+        jobs = [(l, s, o) for l, s, o in jobs if l == side]
+    elif side != "both":
+        raise SystemExit(f"HVB_EMBED_SIDE must be han|vi|both, got: {side}")
+    for label, sent_path, out_path in jobs:
         if not sent_path.exists():
             raise SystemExit(f"Run split_{label} first. Missing: {sent_path}")
         sents = load_sentences(sent_path)
