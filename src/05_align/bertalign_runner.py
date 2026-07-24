@@ -74,11 +74,14 @@ def _load_bertalign_class():
     return bertalign, _al
 
 
-def _extract_pairs(aligner, han_sents, vi_sents):
+def _extract_pairs(aligner, han_sents, vi_sents, vi_taps=None):
     """Turn Bertalign `.result` beads into pair records with cosine scores.
 
     result: list of ([src_lines], [tgt_lines]) — either list may be empty
     (deletion / insertion). Skip empty-side beads (no alignment info).
+
+    vi_taps: optional list mapping vi_idx → tap name (e.g. "tap4"). When
+    provided, attaches `tap` field to each pair (derived from tgt_idx[0]).
     """
     src_vecs = aligner.src_vecs[0]  # (N_src, D) single-sentence rows
     tgt_vecs = aligner.tgt_vecs[0]
@@ -91,13 +94,16 @@ def _extract_pairs(aligner, han_sents, vi_sents):
         tgt_pool = tgt_vecs[tgt_idxs].mean(axis=0)
         # Both L2-normalized → dot product = cosine similarity
         score = float(np.dot(src_pool, tgt_pool))
-        pairs.append({
+        rec = {
             "src_idx": list(map(int, src_idxs)),
             "tgt_idx": list(map(int, tgt_idxs)),
             "src": " ".join(han_sents[i] for i in src_idxs),
             "tgt": " ".join(vi_sents[i] for i in tgt_idxs),
             "score": score,
-        })
+        }
+        if vi_taps is not None and tgt_idxs:
+            rec["tap"] = vi_taps[tgt_idxs[0]]
+        pairs.append(rec)
     return pairs
 
 
@@ -116,9 +122,13 @@ def main() -> None:
     Bertalign = bertalign.Bertalign
 
     han_sents = [json.loads(l)["text"].replace("\n", " ").strip() for l in HAN_SENT.open()]
-    vi_sents = [json.loads(l)["text"].replace("\n", " ").strip() for l in VI_SENT.open()]
+    vi_records = [
+        (json.loads(l)["text"].replace("\n", " ").strip(), json.loads(l).get("tap", "none"))
+        for l in VI_SENT.open()
+    ]
     han_sents = [s for s in han_sents if s]
-    vi_sents = [s for s in vi_sents if s]
+    vi_sents = [s for s, _ in vi_records if s]
+    vi_taps = [t for s, t in vi_records if s]
     print(f"src={len(han_sents):,} tgt={len(vi_sents):,}")
 
     src_txt = "\n".join(han_sents)
@@ -150,7 +160,7 @@ def main() -> None:
     )
     aligner.align_sents()
 
-    pairs = _extract_pairs(aligner, han_sents, vi_sents)
+    pairs = _extract_pairs(aligner, han_sents, vi_sents, vi_taps=vi_taps)
     kept = 0
     PAIRS_JSONL.parent.mkdir(parents=True, exist_ok=True)
     with PAIRS_JSONL.open("w", encoding="utf-8") as fout:

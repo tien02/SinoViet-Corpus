@@ -60,8 +60,8 @@ MIN_HAN_LEN = int(os.environ.get("HVB_MIN_HAN_LEN", "4"))
 
 # Page-margin artifact filter: drop Việt starting with `1)`, `2)`, `(1)`, `[1]`,
 # etc. (docx/OCR page furniture). These have score ~0.5 and are not real
-# translations. Set to 0 to disable. Default catches ~119 artifacts in Phase 1.
-NUM_MARKER_RE = re.compile(r"^[\(\[]?\d")
+# translations. Set HVB_NUM_MARKER=0 to disable. Default catches page furniture.
+NUM_MARKER_RE = None if os.environ.get("HVB_NUM_MARKER", "1") == "0" else re.compile(r"^[\(\[]?\d")
 
 # Rescue policy: if embedder cosine is high, don't drop a pair for weak sino or
 # out-of-range length ratio. Prevents false positives from proxy filters when
@@ -76,7 +76,7 @@ RATIO_RESCUE_COS = float(os.environ.get("HVB_RATIO_RESCUE_COS", "0.60"))
 # splitting while keeping legitimate semantic translations (high cosine).
 # Condition: ratio > 10 AND han_len < 10 AND sino < 0.3
 # Set to 0 to disable. Default catches ~17 noisy pairs (0.05% of corpus).
-DROP_LOW_CONF_OUTLIERS = bool(os.environ.get("HVB_DROP_LOW_CONF", "1"))
+DROP_LOW_CONF_OUTLIERS = os.environ.get("HVB_DROP_LOW_CONF", "1") not in ("0", "", "false", "False")
 
 # Hard ceiling on length ratio (never rescues): drops extreme outliers
 # (e.g. Hán 15 chars → Việt 1461 chars = 97x ratio). Even high-cosine
@@ -178,8 +178,11 @@ def load_pairs() -> dict[str | None, list[tuple[int, str, str, float]]]:
                 dropped_sino += 1
                 continue
         if MIN_HAN_LEN > 0 and len(han) <= MIN_HAN_LEN:
-            dropped_han_short += 1
-            continue
+            if _SCORE_IS_SIM and cos >= 0.55:
+                pass
+            else:
+                dropped_han_short += 1
+                continue
         if NUM_MARKER_RE and NUM_MARKER_RE.match(viet.lstrip()):
             dropped_num_marker += 1
             continue
@@ -191,9 +194,9 @@ def load_pairs() -> dict[str | None, list[tuple[int, str, str, float]]]:
     if not rows_by_tap:
         raise SystemExit(f"No usable pairs in {PAIRS_JSONL}.")
 
-    # Assign pair_ids per tap
+    # Assign pair_ids per tap (0-indexed)
     for tap in rows_by_tap:
-        rows_by_tap[tap] = [(i + 1, han, viet, sino) for i, (han, viet, sino) in enumerate(rows_by_tap[tap])]
+        rows_by_tap[tap] = [(i, han, viet, sino) for i, (han, viet, sino) in enumerate(rows_by_tap[tap])]
 
     total_pairs = sum(len(rows) for rows in rows_by_tap.values())
     print(
