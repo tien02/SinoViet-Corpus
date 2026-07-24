@@ -13,25 +13,55 @@
 
 ### 1.2 Bài toán được giao
 - **Input:**
-  - Hán: 49,927 câu raw → 80,391 câu sau punctuate
-  - Việt: 58,032 câu từ nguồn digitize
+  - Hán: 231,572 dòng raw → 34,609 câu sau Guwen-biaodian split
+  - Việt: 47,260 câu từ bertalign
 - **Output:**
-  - TSV + XLSX: `pair_id ⇥ han_sentence ⇥ viet_sentence ⇥ sino` (46,880 cặp)
-  - Coverage: 80.8% Vietnamese sentences aligned
-  - Mean score: Bertalign 0.624, Greedy fallback 0.644
+  - TSV + XLSX: `pair_id ⇥ han_sentence ⇥ viet_sentence` (36,033 cặp)
+  - Coverage: 76.3% Việt sentences aligned (36,033 / 47,260)
+  - Mean cosine similarity: 0.6290
 
 ### 1.3 Phạm vi dữ liệu & kết quả mong đợi
+
+**Bảng 1.3a — Tổng thể pipeline**
+
+| Giai đoạn | Hán | Việt | Ghi chú |
+|-----------|-----|------|---------|
+| Raw input | 231,572 dòng | — | Từ Wiki文库 digitize |
+| Split (Guwen-biaodian) | 34,609 câu | — | Sau punctuate + sentence break |
+| Bertalign output | — | 47,260 câu unique | 48,182 cặp (m-n beads) |
+| **Deliverable** | — | — | **36,033 cặp** (sau filter) |
+| **Coverage** | — | — | **76.3%** (36,033 / 47,260) |
+
+**Bảng 1.3b — Chi tiết theo Tập Việt**
+
+| Tập | Bertalign pairs | Deliverable | Dropped | Retention |
+|-----|---------|-----|---------|-----------|
+| **tap4** | 18,279 | 14,279 | 4,000 | 78.1% |
+| **tap5** | 11,810 | 8,907 | 2,903 | 75.4% |
+| **tap6** | 18,093 | 12,847 | 5,246 | 71.0% |
+| **TOTAL** | 48,182 | 36,033 | 12,149 | 74.8% |
+
+**Bảng 1.3c — Thống kê chất lượng**
+
 | Chỉ số | Giá trị | Ghi chú |
 |--------|---------|---------|
-| Câu Hán (raw) | 49,927 | Guwen-biaodian input |
-| Câu Hán (final) | 80,391 | Sau punctuate |
-| Câu Việt | 58,032 | Nguồn digitize |
-| Bertalign pairs | 35,596 | Trực tiếp DP output |
-| Greedy fallback | +12,586 | Cấp cứu Vi chưa align |
-| **Cặp deliverable** | **46,880** | Sau score-based filter |
-| **Coverage Việt** | **80.8%** | 46,880 / 58,032 |
-| Cosine similarity TB | 0.624 | BGE-M3 |
-| Ratio mean | 3.74 | Vi dài hơn Han |
+| Cosine similarity (mean) | 0.6290 | BGE-M3 embedding model |
+| Cosine similarity (median) | 0.6232 | — |
+| Ratio Việt/Hán (mean) | 5.44 | Việt dài hơn Hán |
+| Ratio Việt/Hán (median) | 4.63 | — |
+| Cosine range | [0.4532, 0.9152] | Min–max scores |
+
+**Bảng 1.3d — Lý do loại cặp (Filter impact)**
+
+| Filter | Count | Tỷ lệ | Lý do |
+|--------|-------|-------|------|
+| Ratio ∉ [0.5, 8.0] | 5,160 | 10.7% | Bertalign merge artifacts |
+| Sino phonetic <0.15 | 6,164 | 12.8% | Han→Sino-Viet mismatch |
+| Han ≤4 chars (score <0.55) | 373 | 0.8% | Punctuation/fragment noise |
+| >2000 chars | 15 | 0.03% | Excel cell limit |
+| Num markers (page furniture) | 437 | 0.9% | OCR page numbers |
+| **Total dropped** | **12,149** | **25.2%** | — |
+| **Retained** | **36,033** | **74.8%** | — |
 
 ---
 
@@ -41,13 +71,13 @@
 
 #### 2.1.1 Phía Hán (Han)
 - **Nguồn:** `Đại Nam Thực Lục` (Wiki文库, digitize)
-- **Kích thước:** 233K dòng, 4.9M ký tự
-- **Xử lý:** Normalize + Guwen-biaodian punctuate → **49,927 → 80,391 câu**
+- **Kích thước:** 231,572 dòng, 4.9M ký tự
+- **Xử lý:** Guwen-biaodian punctuate + split → **34,609 câu**
 
 #### 2.1.2 Phía Việt (Vi)
 - **Nguồn:** Đại Nam Thực Lục Quốc Sử Quán (3 tập)
-- **Kích thước:** 58,032 câu
-- **Trạng thái:** Digitize sạch, người tách câu
+- **Kích thước:** 47,260 câu unique (từ bertalign)
+- **OCR:** 243,633 dòng raw → segmentation
 
 ### 2.2 Công cụ & Thư viện sử dụng
 
@@ -57,10 +87,10 @@
 
 | Metric | Vecalign (LaBSE) | Bertalign (BGE-M3) | Lợi thế |
 |--------|-----------------|-------------------|--------|
-| Cặp output | 7,043 | 35,596 | **+405% Bertalign** |
-| Cosine TB | — | 0.624 | ✓ Cosine similarity |
-| Sino TB | 0.275 | 0.624 → rerank | ✓ Dual score |
-| Bead 1-1 % | ~60% | 46.8% | ✓ M-n bead support |
+| Cặp output | 7,043 | 48,182 | **+585% Bertalign** |
+| Cosine TB | — | 0.6290 | ✓ Cosine similarity |
+| Sino TB | 0.275 | 0.45–0.65 (range) | ✓ Dual score |
+| Bead 1-1 % | ~60% | ~50% | ✓ M-n bead support |
 | Rescue logic | None | Cosine ≥0.55 | ✓ Semantic override |
 
 **Finding:** Bertalign + BGE-M3 **giải quyết 5 vấn đề** của Vecalign:
@@ -70,7 +100,7 @@
 4. Rescue logic cho low-sino pairs
 5. Hybrid scoring (sino + cosine)
 
-**Giải pháp chọn:** Bertalign + BGE-M3 (final)
+**Giải pháp chọn:** Bertalign + BGE-M3 (final, 48,182 cặp)
 
 ---
 
@@ -82,22 +112,27 @@
 |---------------|-----------|----------|-------------|---------|----------|
 | **Strict** (orig) | 41,226 | 71.0% | [0.5, 8.0] | 4 chars | ✓ Clean, ✗ Conservative |
 | **Loose** | 44,830 | 77.3% | [0.2, 12.0] | 4 chars | ✓ More pairs, ✗ Noise |
-| **Score-based** | **46,880** | **80.8%** | [0.2, 12.0] | 4→rescue | ✅ **CHỌN** |
+| **Score-based** | **36,033** | **76.3%** | [0.5, 8.0] + rescue | 4→0.55 | ✅ **CHỌN** |
 
-**Score-based logic:**
-- Short Han (≤4 chars): Keep if score ≥0.55 (save ~1,100 valid short phrases)
-- Extreme ratio (>12 or <0.2): Always drop (genuine Bertalign merge artifacts)
-- Rescue out-of-range ratio: If cosine ≥0.4 (save 2,072 pairs)
+**Score-based logic (applied):**
+- Ratio filter [0.5–8.0]: Drop 5,160 pairs (extreme Bertalign merges)
+- Sino phonetic <0.15: Drop 6,164 pairs (Han→SinoViet mismatch)
+- Short Han (≤4 chars, score <0.55): Drop 373 pairs (punctuation noise)
+- Hard ceiling >2000 chars: Drop 15 pairs (Excel limit)
+- Page furniture (num markers): Drop 437 pairs
 
-**Finding:** Score-based filter = **+2,050 pairs** vs strict, **minimal quality loss**
+**Finding:** Score-based filter **enforces quality** while keeping **74.8% of Bertalign output**
 
-| Lý do drop | Count | Chất lượng | Quyết định |
-|-----------|-------|-----------|-----------|
-| Extreme ratio >12 | 2,010 | Giả dương: 1 Han → 1000 Vi | ✗ Drop |
-| Extreme ratio <0.2 | 88 | Giả dương: 1400 Han → 30 Vi | ✗ Drop |
-| Han ≤4, score <0.55 | 87 | Borderline (0.50-0.55) | ✗ Drop (safe margin) |
+| Lý do drop | Count | % | Chất lượng | Quyết định |
+|-----------|-------|---|-----------|-----------|
+| Ratio [0.5–8.0] | 5,160 | 10.7% | Bertalign merge artifacts | ✗ Drop |
+| Sino <0.15 | 6,164 | 12.8% | Phonetic mismatch | ✗ Drop |
+| Han ≤4 (score <0.55) | 373 | 0.8% | Fragment/punct noise | ✗ Drop |
+| Num markers | 437 | 0.9% | Page furniture | ✗ Drop |
+| Other (>2000 chars) | 15 | 0.03% | Cell overflow | ✗ Drop |
+| **Total retained** | **36,033** | **74.8%** | Balanced quality/coverage | ✅ Keep |
 
-**Giải pháp chọn:** Score-based filter (final)
+**Giải pháp chọn:** Score-based filter (final, 36,033 cặp / 76.3% coverage)
 
 ---
 
