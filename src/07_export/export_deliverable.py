@@ -2,7 +2,7 @@
 
 Produces separate output for each Vietnamese volume (tap):
   {prefix}_{tap}_raw.txt       - raw OCR for that tap
-  {prefix}_{tap}_parallel.tsv  - [pair_id]\\t[han_sentence]\\t[viet_sentence]\\t[sino]
+  {prefix}_{tap}_parallel.tsv  - [pair_id]\\t[han_sentence]\\t[viet_sentence]
   {prefix}_{tap}_parallel.xlsx - same columns in Excel
 
 Reads pairs.jsonl (align output, now with tap field) and per-page raw OCR files.
@@ -119,15 +119,15 @@ def _flatten(text: str) -> str:
     return " ".join(text.split())
 
 
-def load_pairs() -> dict[str | None, list[tuple[int, str, str, float]]]:
+def load_pairs() -> dict[str | None, list[tuple[int, str, str]]]:
     """Load pairs grouped by tap (Vietnamese volume).
 
-    Returns dict[tap_name, list of (pair_id, han, viet, sino)].
+    Returns dict[tap_name, list of (pair_id, han, viet)].
     tap_name = 'tap4', 'tap5', etc. or None for pairs without tap info.
     """
     if not PAIRS_JSONL.exists():
         raise SystemExit(f"Missing {PAIRS_JSONL}. Run the align stage first.")
-    rows_by_tap: dict[str | None, list[tuple[int, str, str, float]]] = {}
+    rows_by_tap: dict[str | None, list[tuple[int, str, str]]] = {}
     dropped_empty = 0
     dropped_long = 0
     dropped_sino = 0
@@ -189,14 +189,14 @@ def load_pairs() -> dict[str | None, list[tuple[int, str, str, float]]]:
         tap = p.get("tap")  # Group by tap (Vietnamese volume)
         if tap not in rows_by_tap:
             rows_by_tap[tap] = []
-        rows_by_tap[tap].append((han, viet, sino))
+        rows_by_tap[tap].append((han, viet))
 
     if not rows_by_tap:
         raise SystemExit(f"No usable pairs in {PAIRS_JSONL}.")
 
     # Assign pair_ids per tap (0-indexed)
     for tap in rows_by_tap:
-        rows_by_tap[tap] = [(i, han, viet, sino) for i, (han, viet, sino) in enumerate(rows_by_tap[tap])]
+        rows_by_tap[tap] = [(i, han, viet) for i, (han, viet) in enumerate(rows_by_tap[tap])]
 
     total_pairs = sum(len(rows) for rows in rows_by_tap.values())
     print(
@@ -241,19 +241,19 @@ def write_raw(tap: str | None) -> None:
     print(f"  raw   -> {raw_file} ({len(pages)} pages)")
 
 
-def write_tsv(tap: str | None, rows: list[tuple[int, str, str, float]]) -> None:
+def write_tsv(tap: str | None, rows: list[tuple[int, str, str]]) -> None:
     if not tap:
         print(f"  WARN: skipping TSV for pairs without tap info")
         return
     tsv_file = DELIVERABLE_TSV.parent / f"{DELIVERABLE_PREFIX}_{tap}_parallel.tsv"
     with tsv_file.open("w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
-        w.writerow(["pair_id", "han_sentence", "viet_sentence", "sino"])
+        w.writerow(["pair_id", "han_sentence", "viet_sentence"])
         w.writerows(rows)
     print(f"  tsv   -> {tsv_file} ({len(rows):,} pairs)")
 
 
-def write_xlsx(tap: str | None, rows: list[tuple[int, str, str, float]]) -> None:
+def write_xlsx(tap: str | None, rows: list[tuple[int, str, str]]) -> None:
     if not tap:
         print(f"  WARN: skipping XLSX for pairs without tap info")
         return
@@ -263,7 +263,7 @@ def write_xlsx(tap: str | None, rows: list[tuple[int, str, str, float]]) -> None
         raise SystemExit("pandas required for xlsx export (uv add pandas openpyxl).")
     xlsx_file = DELIVERABLE_XLSX.parent / f"{DELIVERABLE_PREFIX}_{tap}_parallel.xlsx"
     df = pd.DataFrame(
-        rows, columns=["pair_id", "han_sentence", "viet_sentence", "sino"]
+        rows, columns=["pair_id", "han_sentence", "viet_sentence"]
     )
     try:
         df.to_excel(xlsx_file, index=False, engine="openpyxl")
