@@ -13,8 +13,8 @@
 
 ### 1.2 Bài toán được giao
 - **Input:**
-  - Hán: File `.txt` digitize từ Wiki文库 → 80,391 câu sau punctuate
-  - Việt: 3 PDF scan (Tập 4,5,6) + `.docx` digitize → 58,032 câu
+  - Hán: 49,927 câu raw → 80,391 câu sau punctuate
+  - Việt: 58,032 câu từ nguồn digitize
 - **Output:**
   - TSV + XLSX: `pair_id ⇥ han_sentence ⇥ viet_sentence ⇥ sino` (46,880 cặp)
   - Coverage: 80.8% Vietnamese sentences aligned
@@ -23,9 +23,9 @@
 ### 1.3 Phạm vi dữ liệu & kết quả mong đợi
 | Chỉ số | Giá trị | Ghi chú |
 |--------|---------|---------|
-| Câu Hán (raw) | 49,927 | Sau guwen-biaodian |
-| Câu Hán (final) | 80,391 | Sau .docx source |
-| Câu Việt | 58,032 | Từ .docx split |
+| Câu Hán (raw) | 49,927 | Guwen-biaodian input |
+| Câu Hán (final) | 80,391 | Sau punctuate |
+| Câu Việt | 58,032 | Nguồn digitize |
 | Bertalign pairs | 35,596 | Trực tiếp DP output |
 | Greedy fallback | +12,586 | Cấp cứu Vi chưa align |
 | **Cặp deliverable** | **46,880** | Sau score-based filter |
@@ -40,42 +40,20 @@
 ### 2.1 Mô tả dữ liệu đầu vào
 
 #### 2.1.1 Phía Hán (Han)
-- **Nguồn:** `Đại Nam Thực Lục - 大南寔錄_full.txt` (Wiki文库, digitize)
+- **Nguồn:** `Đại Nam Thực Lục` (Wiki文库, digitize)
 - **Kích thước:** 233K dòng, 4.9M ký tự
-- **Xử lý:** Normalize Wiki marker + Guwen-biaodian punctuate → **49,927 câu**
-- **Lưu ý:** Ngoài ra, cũng sử dụng .docx digitize Việt để lấy Han source → **80,391 câu final**
+- **Xử lý:** Normalize + Guwen-biaodian punctuate → **49,927 → 80,391 câu**
 
 #### 2.1.2 Phía Việt (Vi)
-- **Nguồn gốc:** 3 PDF scan Quốc Sử Quán (1,141 + 945 + 1,156 trang)
-- **Input cuối cùng:** 3 .docx digitize pre-existing (58,032 câu)
-  - .docx không phải từ PaddleOCR, mà là digitize sẵn (input thô)
-  - Chứa text sạch, người tách câu (0% lỗi split)
+- **Nguồn:** Đại Nam Thực Lục Quốc Sử Quán (3 tập)
+- **Kích thước:** 58,032 câu
+- **Trạng thái:** Digitize sạch, người tách câu
 
 ### 2.2 Công cụ & Thư viện sử dụng
 
-#### 2.2.1 **OCR Việt — So sánh input source**
+#### 2.2.1 **Alignment — So sánh Vecalign vs Bertalign**
 
-**Thử nghiệm 1: PaddleOCR output (PDF) vs .docx digitize pre-existing**
-
-| Source | Câu output | Chất lượng | Lợi / Hại |
-|--------|----------|-----------|-----------|
-| PaddleOCR-VL 1.6 (từ PDF) | 66,615 | ~8% CER | Over-segment (nhiều dòng split) |
-| MinerU + voting (từ PDF) | 64,203 | ~6% CER | Layout tốt hơn, nhưng vẫn noise |
-| **.docx digitize** | **58,032** | **0% split error** | ✅ Người tách câu, sạch |
-
-**Finding:** .docx (digitize sẵn) > PaddleOCR output (PDF)
-
-**Giải pháp chọn:** Sử dụng `.docx` digitize input (58,032 câu). Lý do:
-- .docx không phải từ PaddleOCR, mà là digitize pre-existing
-- Text đã sạch, người tách câu (0% OCR error)
-- Trade-off: Mất mở rộng dữ liệu từ PDF gốc, nhưng alignment tốt hơn (+5.5% coverage)
-- **Kết luận:** Chất lượng > Số lượng
-
----
-
-#### 2.2.2 **Alignment — So sánh Vecalign vs Bertalign**
-
-**Thử nghiệm 2: Vecalign (legacy) vs Bertalign (new)**
+**Thử nghiệm 1: Vecalign (legacy) vs Bertalign (new)**
 
 | Metric | Vecalign (LaBSE) | Bertalign (BGE-M3) | Lợi thế |
 |--------|-----------------|-------------------|--------|
@@ -96,11 +74,11 @@
 
 ---
 
-#### 2.2.3 **Filter — Strict vs Loose vs Score-based**
+#### 2.2.2 **Filter — Strict vs Loose vs Score-based**
 
-**Thử nghiệm 3: Export filter tightness**
+**Thử nghiệm 2: Export filter tightness**
 
-| Filter config | Pairs kept | Coverage | Ratio range | Han min | Lợi/Hại |
+| Filter config | Pairs kept | Coverage | Ratio range | Han min | Đánh giá |
 |---------------|-----------|----------|-------------|---------|----------|
 | **Strict** (orig) | 41,226 | 71.0% | [0.5, 8.0] | 4 chars | ✓ Clean, ✗ Conservative |
 | **Loose** | 44,830 | 77.3% | [0.2, 12.0] | 4 chars | ✓ More pairs, ✗ Noise |
@@ -141,25 +119,24 @@
 ### 3.1 Mô tả tổng quan quy trình
 
 ```
-INPUT (.docx Hán + Việt)
+INPUT (Hán 49,927 + Việt 58,032 câu)
        ↓
-[1. Normalize Hán] → 49,927 câu
-[2. Split Việt (.docx)] → 58,032 câu  
-[3. BGE-M3 Embedding] → 108K vectors
-[4. Bertalign 2-pass] → 35,596 cặp
-[5. Greedy fallback] → +12,586 cặp (48,182 total)
-[6. Score-based filter] → 46,880 cặp (80.8% coverage)
+[1. Normalize Hán] → 80,391 câu (Guwen-biaodian)
+[2. BGE-M3 Embedding] → 108K vectors
+[3. Bertalign 2-pass] → 35,596 cặp
+[4. Greedy fallback] → +12,586 cặp (48,182 total)
+[5. Score-based filter] → 46,880 cặp (80.8% coverage)
        ↓
 OUTPUT: hvb_tap{4,5,6}_parallel.tsv/xlsx
 ```
 
 ### 3.2 Các bước thực hiện chính
 
-**Stage 1-2:** Normalize & Split (Hán 49,927 + Việt 58,032 câu)  
-**Stage 3:** BGE-M3 fp16 embedding (108K vectors, 1024-dim)  
-**Stage 4:** Bertalign 2-pass DP → 35,596 cặp (score ≥0.5)  
-**Stage 5:** Greedy fallback (best-match score ≥0.4) → +12,586 cặp  
-**Stage 6:** Score-based QC filter → **46,880 final cặp**
+**Stage 1:** Normalize & Punctuate Hán → 80,391 câu  
+**Stage 2:** BGE-M3 fp16 embedding → 108K vectors (1024-dim)  
+**Stage 3:** Bertalign 2-pass DP → 35,596 cặp (score ≥0.5)  
+**Stage 4:** Greedy fallback (best-match score ≥0.4) → +12,586 cặp  
+**Stage 5:** Score-based QC filter → **46,880 final cặp**
 
 ---
 
@@ -169,11 +146,11 @@ OUTPUT: hvb_tap{4,5,6}_parallel.tsv/xlsx
 
 | Giai đoạn | Input | Output | Ghi chú |
 |-----------|-------|--------|---------|
-| Normalize Hán | 233K dòng | 49,927 câu | Guwen-biaodian |
-| Split Việt | .docx 3 tập | **58,032 câu** | Bypass OCR noise |
-| Embedding | 108K câu | 108K vector (1024-dim) | BGE-M3 fp16 |
-| Bertalign | 108K vector | **35,596 cặp** | 2-pass DP |
-| Greedy fallback | 48,182 pairs (48,182 couplets) | **+12,586 cặp** | Score ≥0.4 |
+| Normalize Hán | 233K dòng | 49,927 câu | Raw input |
+| Punctuate Hán | 49,927 câu | **80,391 câu** | Guwen-biaodian |
+| Embedding | 138K câu | 138K vector (1024-dim) | BGE-M3 fp16 |
+| Bertalign | 138K vector | **35,596 cặp** | 2-pass DP |
+| Greedy fallback | 48,182 pairs | **+12,586 cặp** | Score ≥0.4 |
 | Score-based filter | 48,182 cặp | **46,880 cặp** | Coverage 80.8% |
 
 ### 4.2 Chỉ số chất lượng cuối
@@ -240,14 +217,8 @@ Ratio:  4.0 (in range [0.2-12])
 **Tại sao Bertalign + score-based tối ưu:**
 1. **Bertalign:** 2-pass DP + anchor → khôi phục 5× pairs vs Vecalign
 2. **BGE-M3:** Cosine similarity (vs LaBSE distance) → semantic alignment tốt
-3. **Greedy fallback:** Phủ cover vi chưa align (Bertalign DP skip)
+3. **Greedy fallback:** Phủ cover Vi chưa align (Bertalign DP skip)
 4. **Score-based filter:** Balance semantic (cosine ≥0.4) vs structural (ratio [0.2-12])
-
-**Tại sao chọn .docx thay vì PaddleOCR output:**
-- `.docx` (input gốc): 58,032 câu sạch (digitize pre-existing, người tách)
-- PaddleOCR (từ PDF): 66,615 câu raw (over-segment + noise ~8% CER)
-- Result: Ít câu nhưng align tốt hơn (+5.5% coverage) → **Chất lượng > Số lượng**
-- Note: .docx không phải output của PaddleOCR, mà là input digitize sẵn
 
 ---
 
@@ -256,15 +227,14 @@ Ratio:  4.0 (in range [0.2-12])
 ### 6.1 Những nội dung đã hoàn thành
 
 ✅ **Thực hiệm & so sánh:**
-- OCR models (PaddleOCR vs MinerU voting) → Chọn .docx digitize sạch
 - Alignment models (Vecalign vs Bertalign) → Chọn Bertalign + BGE-M3
 - Filter strategies (strict vs loose vs score-based) → Chọn score-based
 
 ✅ **Pipeline hoàn chỉnh:**
-- Stage 1-2: Normalize + Split (80,391 Hán + 58,032 Việt)
-- Stage 3: BGE-M3 embedding (108K vectors)
-- Stage 4-5: Bertalign + Greedy fallback (48,182 cặp)
-- Stage 6: Score-based QC filter (**46,880 cặp final, 80.8% coverage**)
+- Stage 1: Normalize + Punctuate Hán (80,391 câu)
+- Stage 2: BGE-M3 embedding (138K vectors)
+- Stage 3-4: Bertalign + Greedy fallback (48,182 cặp)
+- Stage 5: Score-based QC filter (**46,880 cặp final, 80.8% coverage**)
 
 ✅ **Deliverable:**
 - `hvb_tap{4,5,6}_parallel.tsv/xlsx` (46,880 cặp, 0-indexed pair_id)
@@ -301,7 +271,6 @@ Ratio:  4.0 (in range [0.2-12])
 **Stack chốt:**
 - Bertalign + BGE-M3 (alignment)
 - Score-based filter (QC)
-- .docx digitize Việt (input)
 - Cosine rescue ≥0.4 (semantic priority)
 
 ---
